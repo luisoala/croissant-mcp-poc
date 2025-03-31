@@ -58,64 +58,48 @@ DATASETS = [
     }
 ]
 
-class JsonRpcResponse:
-    """Base class for JSON-RPC 2.0 responses"""
-    def __init__(self, id: Optional[str] = None):
-        self.jsonrpc = "2.0"
-        self.id = id or "1"  # Default ID if none provided
-
-    def to_dict(self) -> Dict[str, Any]:
-        return {"jsonrpc": self.jsonrpc, "id": self.id}
-
-class JsonRpcResult(JsonRpcResponse):
-    """JSON-RPC 2.0 success response"""
-    def __init__(self, result: Any, id: Optional[str] = None):
-        super().__init__(id)
+class JsonRpcResult:
+    def __init__(self, result: Any, id: str):
         self.result = result
+        self.id = id
 
     def to_dict(self) -> Dict[str, Any]:
-        response = super().to_dict()
-        response["result"] = self.result
-        return response
-
-class JsonRpcError(JsonRpcResponse):
-    """JSON-RPC 2.0 error response"""
-    def __init__(self, code: int, message: str, data: Any = None, id: Optional[str] = None):
-        super().__init__(id)
-        self.error = {
-            "code": code,
-            "message": message
+        return {
+            "jsonrpc": "2.0",
+            "result": self.result,
+            "id": self.id
         }
-        if data:
-            self.error["data"] = data
+
+class JsonRpcError:
+    def __init__(self, code: int, message: str, id: str):
+        self.code = code
+        self.message = message
+        self.id = id
 
     def to_dict(self) -> Dict[str, Any]:
-        response = super().to_dict()
-        response["error"] = self.error
-        return response
+        return {
+            "jsonrpc": "2.0",
+            "error": {
+                "code": self.code,
+                "message": self.message
+            },
+            "id": self.id
+        }
 
 async def validate_api_key(request: Request) -> bool:
-    """
-    Validate API key using Cursor-compatible methods:
-    1. X-API-Key header
-    2. env.API_KEY in query parameter (Cursor format)
-    """
-    logger.info(f"Request headers: {dict(request.headers)}")
-    logger.info(f"Query parameters: {dict(request.query_params)}")
-    logger.info(f"URL: {request.url}")
-    
-    api_key_header = request.headers.get(API_KEY_NAME)
-    if api_key_header and api_key_header == API_KEY:
-        logger.info(f"Valid API key provided in header for {request.url.path}")
+    """Validate API key from various sources"""
+    if request.url.path in ["/health", "/", "/docs", "/openapi.json", "/redoc"]:
         return True
 
-    for key, value in request.query_params.items():
-        decoded_key = urllib.parse.unquote(key.lower())
-        decoded_value = urllib.parse.unquote(value)
-        if decoded_key == "env.api_key" and decoded_value == API_KEY:
-            logger.info(f"Valid API key provided in env.API_KEY query parameter for {request.url.path}")
-            return True
-            
+    api_key = request.headers.get(API_KEY_NAME)
+    
+    if not api_key and "env.API_KEY" in request.query_params:
+        api_key = request.query_params["env.API_KEY"]
+    
+    if api_key == API_KEY:
+        logger.info(f"Valid API key provided for {request.url.path}")
+        return True
+    
     logger.warning(f"Invalid or missing API key for {request.url.path}")
     return False
 
@@ -127,29 +111,19 @@ async def api_key_middleware(request: Request, call_next):
     
     if request.url.path in ["/", "/info", "/sse"]:
         return await call_next(request)
-    
     is_valid = await validate_api_key(request)
     if is_valid:
         return await call_next(request)
     
-    detail_msg = (
-        "Invalid or missing API key. Provide the API key either:\n"
-        "1. As 'X-API-Key' header\n"
-        "2. As 'env.API_KEY' query parameter (e.g. ?env.API_KEY=your-key)"
-    )
+    error_response = JsonRpcError(
+        code=-32000,
+        message="Invalid or missing API key. Provide the API key either:\n"
+                "1. As 'X-API-Key' header\n"
+                "2. As 'env.API_KEY' query parameter (e.g. ?env.API_KEY=your-key)",
+        id="1"
+    ).to_dict()
     
-    if request.url.path.startswith("/mcp"):
-        error_response = JsonRpcError(
-            code=-32000, 
-            message=detail_msg,
-            id="1"
-        ).to_dict()
-        return JSONResponse(status_code=403, content=error_response)
-    
-    return JSONResponse(
-        status_code=403,
-        content={"detail": detail_msg}
-    )
+    return JSONResponse(status_code=403, content=error_response)
 
 @app.get("/")
 async def root():
@@ -157,6 +131,7 @@ async def root():
 
 @app.get("/info")
 async def info():
+    """Server information endpoint"""
     return {
         "name": "Croissant MCP Server",
         "version": "0.1.0",
@@ -164,11 +139,8 @@ async def info():
         "endpoints": [
             {"path": "/", "method": "GET", "description": "Root endpoint"},
             {"path": "/info", "method": "GET", "description": "Server information"},
-            {"path": "/sse", "method": "GET", "description": "MCP SSE endpoint for Cursor"},
-            {"path": "/mcp", "method": "POST", "description": "MCP JSON-RPC endpoint"},
-            {"path": "/datasets", "method": "GET", "description": "List all datasets"},
-            {"path": "/datasets/{dataset_id}", "method": "GET", "description": "Get dataset by ID"},
-            {"path": "/search", "method": "GET", "description": "Search datasets"}
+            {"path": "/mcp", "method": "GET", "description": "MCP SSE endpoint for Cursor"},
+            {"path": "/mcp", "method": "POST", "description": "MCP JSON-RPC endpoint"}
         ]
     }
 
@@ -198,13 +170,20 @@ async def search_datasets(query: str = ""):
     
     return {"datasets": results}
 
-@app.get("/sse")
-async def sse_endpoint(request: Request):
+@app.get("/mcp")
+async def mcp_sse(request: Request):
     """SSE endpoint for Cursor MCP integration"""
+    if request.headers.get("Accept") != "text/event-stream":
+        return JSONResponse(
+            status_code=400,
+            content={"detail": "This endpoint requires Accept: text/event-stream header"}
+        )
+    
     logger.info(f"SSE connection from Cursor: {request.client.host}")
     logger.info(f"Request headers: {dict(request.headers)}")
     
     async def event_generator():
+        # Send connection event
         connection_data = JsonRpcResult(
             result={"status": "connected", "server": "Croissant MCP Server"},
             id="connection-1"
@@ -215,6 +194,7 @@ async def sse_endpoint(request: Request):
             "data": json.dumps(connection_data)
         }
         
+        # Send heartbeat events
         count = 0
         while True:
             count += 1
@@ -232,23 +212,6 @@ async def sse_endpoint(request: Request):
     
     return EventSourceResponse(event_generator())
 
-@app.get("/mcp")
-@app.get("/mcp/")
-async def mcp_sse(request: Request):
-    """Legacy SSE endpoint for MCP"""
-    if request.headers.get("Accept") != "text/event-stream":
-        return JSONResponse(
-            status_code=400,
-            content={"detail": "This endpoint requires Accept: text/event-stream header"}
-        )
-    
-    logger.info(f"SSE connection from client to {request.url.path} - redirecting to /sse")
-    
-    return Response(
-        status_code=307,
-        headers={"Location": "/sse"}
-    )
-
 @app.post("/mcp")
 @app.post("/mcp/")
 async def mcp_jsonrpc(request: Request):
@@ -259,7 +222,7 @@ async def mcp_jsonrpc(request: Request):
         error_response = JsonRpcError(
             code=-32700,
             message="Parse error",
-            data=str(e)
+            id="1"
         ).to_dict()
         return JSONResponse(status_code=400, content=error_response)
     
@@ -267,7 +230,7 @@ async def mcp_jsonrpc(request: Request):
         error_response = JsonRpcError(
             code=-32600,
             message="Invalid Request",
-            data="Request must be a JSON object"
+            id="1"
         ).to_dict()
         return JSONResponse(status_code=400, content=error_response)
     
@@ -280,7 +243,6 @@ async def mcp_jsonrpc(request: Request):
         error_response = JsonRpcError(
             code=-32600,
             message="Invalid Request",
-            data="jsonrpc field must be '2.0'",
             id=id
         ).to_dict()
         return JSONResponse(status_code=400, content=error_response)
@@ -289,7 +251,6 @@ async def mcp_jsonrpc(request: Request):
         error_response = JsonRpcError(
             code=-32600,
             message="Invalid Request",
-            data="method field is required",
             id=id
         ).to_dict()
         return JSONResponse(status_code=400, content=error_response)
@@ -319,7 +280,6 @@ async def mcp_jsonrpc(request: Request):
             error_response = JsonRpcError(
                 code=-32602,
                 message="Invalid params",
-                data="id parameter is required",
                 id=id
             ).to_dict()
             return JSONResponse(status_code=400, content=error_response)
@@ -343,7 +303,6 @@ async def mcp_jsonrpc(request: Request):
         error_response = JsonRpcError(
             code=-32601,
             message="Method not found",
-            data=f"Method '{method}' is not supported",
             id=id
         ).to_dict()
         return JSONResponse(status_code=404, content=error_response)
