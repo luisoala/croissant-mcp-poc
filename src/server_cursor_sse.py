@@ -5,6 +5,7 @@ import os
 import json
 import logging
 import asyncio
+import urllib.parse
 from typing import Dict, Any, Optional, List, Union, Callable
 from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import JSONResponse
@@ -95,45 +96,26 @@ class JsonRpcError(JsonRpcResponse):
 
 async def validate_api_key(request: Request) -> bool:
     """
-    Validate API key from various sources:
+    Validate API key using Cursor-compatible methods:
     1. X-API-Key header
-    2. api_key query parameter
-    3. env.API_KEY in request body
-    4. Authorization header (Bearer token)
-    5. API_KEY in cookies
+    2. env.API_KEY in query parameter (Cursor format)
     """
+    logger.info(f"Request headers: {dict(request.headers)}")
+    logger.info(f"Query parameters: {dict(request.query_params)}")
+    logger.info(f"URL: {request.url}")
+    
     api_key_header = request.headers.get(API_KEY_NAME)
     if api_key_header and api_key_header == API_KEY:
         logger.info(f"Valid API key provided in header for {request.url.path}")
         return True
 
-    api_key_param = request.query_params.get("api_key")
-    if api_key_param and api_key_param == API_KEY:
-        logger.info(f"Valid API key provided in query parameter for {request.url.path}")
-        return True
-    
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header.replace("Bearer ", "")
-        if token == API_KEY:
-            logger.info(f"Valid API key provided in Authorization header for {request.url.path}")
+    for key, value in request.query_params.items():
+        decoded_key = urllib.parse.unquote(key.lower())
+        decoded_value = urllib.parse.unquote(value)
+        if decoded_key == "env.api_key" and decoded_value == API_KEY:
+            logger.info(f"Valid API key provided in env.API_KEY query parameter for {request.url.path}")
             return True
-
-    api_key_cookie = request.cookies.get("API_KEY")
-    if api_key_cookie and api_key_cookie == API_KEY:
-        logger.info(f"Valid API key provided in cookie for {request.url.path}")
-        return True
-
-    env_api_key = request.query_params.get("env.API_KEY")
-    if env_api_key and env_api_key == API_KEY:
-        logger.info(f"Valid API key provided in env.API_KEY query parameter for {request.url.path}")
-        return True
-        
-    api_key_env = request.query_params.get("API_KEY")
-    if api_key_env and api_key_env == API_KEY:
-        logger.info(f"Valid API key provided in API_KEY query parameter for {request.url.path}")
-        return True
-    
+            
     logger.warning(f"Invalid or missing API key for {request.url.path}")
     return False
 
@@ -147,29 +129,30 @@ async def api_key_middleware(request: Request, call_next):
         return await call_next(request)
     
     if request.url.path == "/info":
-        is_valid = await validate_api_key(request)
-        if is_valid:
-            logger.info(f"Valid API key provided for {request.url.path}")
-        else:
-            logger.info(f"No valid API key for {request.url.path}, but allowing access")
         return await call_next(request)
     
     is_valid = await validate_api_key(request)
     if is_valid:
         return await call_next(request)
-    else:
-        if request.url.path.startswith("/mcp") or request.url.path == "/sse":
-            error_response = JsonRpcError(
-                code=-32000, 
-                message="Invalid or missing API key",
-                id="1"  # Default ID
-            ).to_dict()
-            return JSONResponse(status_code=403, content=error_response)
-        else:
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Invalid or missing API key"}
-            )
+    
+    detail_msg = (
+        "Invalid or missing API key. For Cursor MCP integration, provide the API key either:\n"
+        "1. As 'env.API_KEY' query parameter (e.g. ?env.API_KEY=your-key)\n"
+        "2. As 'X-API-Key' header"
+    )
+    
+    if request.url.path.startswith("/mcp") or request.url.path == "/sse":
+        error_response = JsonRpcError(
+            code=-32000, 
+            message=detail_msg,
+            id="1"
+        ).to_dict()
+        return JSONResponse(status_code=403, content=error_response)
+    
+    return JSONResponse(
+        status_code=403,
+        content={"detail": detail_msg}
+    )
 
 @app.get("/")
 async def root():
