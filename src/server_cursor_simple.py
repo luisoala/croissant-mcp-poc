@@ -37,7 +37,21 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         
         if request.url.path == "/mcp" and request.headers.get("Accept") == "text/event-stream":
-            print("SSE connection from Cursor detected - allowing without header auth")
+            print("SSE connection from Cursor detected")
+            
+            api_key_param = None
+            if "api_key" in request.query_params:
+                api_key_param = request.query_params["api_key"]
+                if api_key_param == API_KEY:
+                    print("Valid API key found in query parameters for SSE connection")
+                    return await call_next(request)
+            
+            api_key_header = request.headers.get(API_KEY_NAME)
+            if api_key_header == API_KEY:
+                print("Valid API key found in headers for SSE connection")
+                return await call_next(request)
+            
+            print("WARNING: Allowing SSE connection without valid API key for testing")
             return await call_next(request)
         
         api_key = request.headers.get(API_KEY_NAME)
