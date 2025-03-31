@@ -125,10 +125,7 @@ async def api_key_middleware(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
     
-    if request.url.path == "/":
-        return await call_next(request)
-    
-    if request.url.path == "/info":
+    if request.url.path in ["/", "/info", "/sse"]:
         return await call_next(request)
     
     is_valid = await validate_api_key(request)
@@ -136,12 +133,12 @@ async def api_key_middleware(request: Request, call_next):
         return await call_next(request)
     
     detail_msg = (
-        "Invalid or missing API key. For Cursor MCP integration, provide the API key either:\n"
-        "1. As 'env.API_KEY' query parameter (e.g. ?env.API_KEY=your-key)\n"
-        "2. As 'X-API-Key' header"
+        "Invalid or missing API key. Provide the API key either:\n"
+        "1. As 'X-API-Key' header\n"
+        "2. As 'env.API_KEY' query parameter (e.g. ?env.API_KEY=your-key)"
     )
     
-    if request.url.path.startswith("/mcp") or request.url.path == "/sse":
+    if request.url.path.startswith("/mcp"):
         error_response = JsonRpcError(
             code=-32000, 
             message=detail_msg,
@@ -204,7 +201,8 @@ async def search_datasets(query: str = ""):
 @app.get("/sse")
 async def sse_endpoint(request: Request):
     """SSE endpoint for Cursor MCP integration"""
-    logger.info(f"SSE connection from Cursor to {request.url.path}")
+    logger.info(f"SSE connection from Cursor: {request.client.host}")
+    logger.info(f"Request headers: {dict(request.headers)}")
     
     async def event_generator():
         connection_data = JsonRpcResult(
