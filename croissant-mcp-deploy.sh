@@ -56,7 +56,7 @@ After=network.target
 User=\$(whoami)
 WorkingDirectory=\$(pwd)
 EnvironmentFile=\$(pwd)/.env
-ExecStart=\$(pwd)/venv/bin/python main_cursor_simple.py
+ExecStart=\$(pwd)/venv/bin/python main_cursor_fixed_v2.py
 Restart=always
 RestartSec=5
 
