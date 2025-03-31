@@ -167,7 +167,7 @@ async def api_key_middleware(request: Request, call_next):
         message="Invalid or missing API key. Provide the API key either:\n"
                 "1. As 'X-API-Key' header\n"
                 "2. As 'env.API_KEY' query parameter",
-        id="1"
+        id=1
     ).to_dict()
     
     return JSONResponse(status_code=403, content=error_response)
@@ -191,6 +191,9 @@ async def info():
             {"path": "/search", "method": "GET", "description": "Search datasets (requires authentication)"},
             {"path": "/messages", "method": "POST", "description": "JSON-RPC 2.0 message endpoint for tools/list and tools/call"}
         ],
+        "capabilities": {
+            "tools": {"listChanged": True}
+        },
         "tools": [tool.to_dict() for tool in TOOLS]
     }
 
@@ -242,9 +245,31 @@ async def sse_endpoint(request: Request):
             "data": json.dumps(connection_data)
         }
         
-        count = 0
+        tools_list = [tool.to_dict() for tool in TOOLS]
+        server_info = {
+            "serverInfo": {
+                "name": "Croissant MCP Server",
+                "version": "0.1.0"
+            },
+            "capabilities": {
+                "tools": {"listChanged": True}
+            },
+            "protocolVersion": "2024-11-05",
+            "tools": tools_list
+        }
+        
+        info_data = JsonRpcResult(
+            result=server_info,
+            id=1
+        ).to_dict()
+        
+        yield {
+            "event": "message",
+            "data": json.dumps(info_data)
+        }
+        
+        count = 2  # Start from 2 since we've used 0 and 1 already
         while True:
-            count += 1
             heartbeat_data = JsonRpcResult(
                 result={"type": "heartbeat", "count": count},
                 id=count
@@ -256,6 +281,7 @@ async def sse_endpoint(request: Request):
             }
             
             await asyncio.sleep(5)
+            count += 1
     
     return EventSourceResponse(event_generator())
 
