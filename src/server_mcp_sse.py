@@ -57,8 +57,48 @@ DATASETS = [
     }
 ]
 
+class Tool:
+    """Definition for a tool the client can call."""
+    
+    def __init__(self, name: str, description: str, input_schema: Dict[str, Any]):
+        self.name = name
+        self.description = description
+        self.input_schema = input_schema
+        
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "inputSchema": self.input_schema
+        }
+
+TOOLS = [
+    Tool(
+        name=f"get_{dataset['id']}_dataset",
+        description=f"Get information about the {dataset['name']} dataset: {dataset['description']}",
+        input_schema={"type": "object", "properties": {}, "required": []}
+    ) for dataset in DATASETS
+]
+
+TOOLS.append(
+    Tool(
+        name="search_datasets",
+        description="Search for datasets by name, description, or tags",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Search query string"
+                }
+            },
+            "required": ["query"]
+        }
+    )
+)
+
 class JsonRpcResult:
-    def __init__(self, result: Any, id: str):
+    def __init__(self, result: Any, id: Any):
         self.result = result
         self.id = id
 
@@ -70,7 +110,7 @@ class JsonRpcResult:
         }
 
 class JsonRpcError:
-    def __init__(self, code: int, message: str, id: str):
+    def __init__(self, code: int, message: str, id: Any):
         self.code = code
         self.message = message
         self.id = id
@@ -148,8 +188,10 @@ async def info():
             {"path": "/info", "method": "GET", "description": "Server information"},
             {"path": "/sse", "method": "GET", "description": "MCP SSE endpoint (no authentication required)"},
             {"path": "/datasets", "method": "GET", "description": "List all datasets (requires authentication)"},
-            {"path": "/search", "method": "GET", "description": "Search datasets (requires authentication)"}
-        ]
+            {"path": "/search", "method": "GET", "description": "Search datasets (requires authentication)"},
+            {"path": "/messages", "method": "POST", "description": "JSON-RPC 2.0 message endpoint for tools/list and tools/call"}
+        ],
+        "tools": [tool.to_dict() for tool in TOOLS]
     }
 
 @app.get("/datasets")
@@ -192,7 +234,7 @@ async def sse_endpoint(request: Request):
     async def event_generator():
         connection_data = JsonRpcResult(
             result={"status": "connected", "server": "Croissant MCP Server"},
-            id="connection-1"
+            id=0
         ).to_dict()
         
         yield {
@@ -205,7 +247,7 @@ async def sse_endpoint(request: Request):
             count += 1
             heartbeat_data = JsonRpcResult(
                 result={"type": "heartbeat", "count": count},
-                id=f"heartbeat-{count}"
+                id=count
             ).to_dict()
             
             yield {
@@ -226,7 +268,7 @@ async def messages_endpoint(request: Request):
         error_response = JsonRpcError(
             code=-32700,
             message="Parse error",
-            id="1"
+            id=1
         ).to_dict()
         return JSONResponse(status_code=400, content=error_response)
     
@@ -234,21 +276,21 @@ async def messages_endpoint(request: Request):
         error_response = JsonRpcError(
             code=-32600,
             message="Invalid Request",
-            id="1"
+            id=1
         ).to_dict()
         return JSONResponse(status_code=400, content=error_response)
     
     jsonrpc = data.get("jsonrpc")
     method = data.get("method")
     params = data.get("params", {})
-    id_value = data.get("id", "1")
-    id = str(id_value) if id_value is not None else "1"
+    id_value = data.get("id", 1)
+    id = id_value if id_value is not None else 1
     
     if jsonrpc != "2.0":
         error_response = JsonRpcError(
             code=-32600,
             message="Invalid Request",
-            id=str(id) if id is not None else "1"
+            id=id if id is not None else 1
         ).to_dict()
         return JSONResponse(status_code=400, content=error_response)
     
@@ -256,11 +298,96 @@ async def messages_endpoint(request: Request):
         error_response = JsonRpcError(
             code=-32600,
             message="Invalid Request",
-            id=str(id) if id is not None else "1"
+            id=id if id is not None else 1
         ).to_dict()
         return JSONResponse(status_code=400, content=error_response)
     
-    if method == "search_datasets":
+    if method == "tools/list":
+        tools_list = [tool.to_dict() for tool in TOOLS]
+        response = JsonRpcResult(
+            result={"tools": tools_list},
+            id=id
+        ).to_dict()
+        return JSONResponse(content=response)
+    
+    elif method == "tools/call":
+        name = params.get("name")
+        arguments = params.get("arguments", {})
+        
+        if not name:
+            error_response = JsonRpcError(
+                code=-32602,
+                message="Invalid params: missing tool name",
+                id=id
+            ).to_dict()
+            return JSONResponse(status_code=400, content=error_response)
+        
+        if name.startswith("get_") and name.endswith("_dataset"):
+            dataset_id = name[4:-8]  # Extract dataset_id from get_<dataset_id>_dataset
+            
+            dataset = None
+            for d in DATASETS:
+                if d["id"] == dataset_id:
+                    dataset = d
+                    break
+            
+            if dataset:
+                response = JsonRpcResult(
+                    result={
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": json.dumps(dataset, indent=2)
+                            }
+                        ]
+                    },
+                    id=id
+                ).to_dict()
+                return JSONResponse(content=response)
+            else:
+                error_response = JsonRpcError(
+                    code=-32603,
+                    message=f"Dataset {dataset_id} not found",
+                    id=id
+                ).to_dict()
+                return JSONResponse(status_code=404, content=error_response)
+        
+        elif name == "search_datasets":
+            query = arguments.get("query", "")
+            results = []
+            
+            if query:
+                query = query.lower()
+                for dataset in DATASETS:
+                    if (query in dataset["name"].lower() or 
+                        query in dataset["description"].lower() or 
+                        any(query in tag.lower() for tag in dataset["tags"])):
+                        results.append(dataset)
+            else:
+                results = DATASETS
+            
+            response = JsonRpcResult(
+                result={
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": json.dumps(results, indent=2)
+                        }
+                    ]
+                },
+                id=id
+            ).to_dict()
+            return JSONResponse(content=response)
+        
+        else:
+            error_response = JsonRpcError(
+                code=-32601,
+                message=f"Method not found: {name}",
+                id=id
+            ).to_dict()
+            return JSONResponse(status_code=404, content=error_response)
+    
+    elif method == "search_datasets":
         query = params.get("query", "")
         results = []
         if query:
@@ -275,7 +402,7 @@ async def messages_endpoint(request: Request):
         
         response = JsonRpcResult(
             result={"datasets": results},
-            id=str(id) if id is not None else "1"
+            id=id if id is not None else 1
         ).to_dict()
         return JSONResponse(content=response)
     
@@ -283,6 +410,6 @@ async def messages_endpoint(request: Request):
         error_response = JsonRpcError(
             code=-32601,
             message="Method not found",
-            id=str(id) if id is not None else "1"
+            id=id if id is not None else 1
         ).to_dict()
         return JSONResponse(status_code=404, content=error_response)
