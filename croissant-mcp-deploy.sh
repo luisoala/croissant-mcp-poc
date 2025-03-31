@@ -69,10 +69,42 @@ sudo systemctl daemon-reload
 sudo systemctl enable croissant-mcp
 sudo systemctl restart croissant-mcp
 
-PUBLIC_HOSTNAME=$(curl -s http://169.254.169.254/latest/meta-data/public-hostname)
+echo "Detecting public IP address..."
+PUBLIC_HOSTNAME=""
+
 if [ -z "$PUBLIC_HOSTNAME" ]; then
-  PUBLIC_HOSTNAME=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4)
+  PUBLIC_HOSTNAME=$(curl -s --connect-timeout 3 http://169.254.169.254/latest/meta-data/public-hostname)
 fi
+
+if [ -z "$PUBLIC_HOSTNAME" ]; then
+  PUBLIC_HOSTNAME=$(curl -s --connect-timeout 3 http://169.254.169.254/latest/meta-data/public-ipv4)
+fi
+
+if [ -z "$PUBLIC_HOSTNAME" ]; then
+  PUBLIC_HOSTNAME=$(curl -s --connect-timeout 3 http://checkip.amazonaws.com)
+  PUBLIC_HOSTNAME=$(echo "$PUBLIC_HOSTNAME" | tr -d '\n')
+fi
+
+if [ -z "$PUBLIC_HOSTNAME" ]; then
+  PUBLIC_HOSTNAME=$(curl -s --connect-timeout 3 https://ifconfig.me)
+fi
+
+if [ -z "$PUBLIC_HOSTNAME" ]; then
+  PUBLIC_HOSTNAME=$(curl -s --connect-timeout 3 https://api.ipify.org)
+fi
+
+if [ -z "$PUBLIC_HOSTNAME" ]; then
+  echo "Could not automatically detect public IP address."
+  echo "Please enter your EC2 instance's public IP address:"
+  read -p "> " PUBLIC_HOSTNAME
+  
+  if [ -z "$PUBLIC_HOSTNAME" ]; then
+    echo "No IP address provided. Using 'your-ec2-public-ip' as a placeholder."
+    PUBLIC_HOSTNAME="your-ec2-public-ip"
+  fi
+fi
+
+echo "Using public address: $PUBLIC_HOSTNAME"
 
 echo ""
 echo "=== Deployment Complete ==="
