@@ -2,6 +2,8 @@ from mcp.server.fastmcp import FastMCP, Context
 import os
 import json
 from typing import Dict, List, Optional, Any
+from fastapi import FastAPI
+from starlette.middleware.cors import CORSMiddleware
 from dataset_index import CroissantDatasetIndex
 from search import CroissantSearch
 
@@ -11,7 +13,17 @@ dataset_index = CroissantDatasetIndex()
 dataset_index.load_example_datasets()
 search_engine = CroissantSearch(dataset_index)
 
-asgi_app = mcp.sse_app()
+app = FastAPI(title="Croissant MCP Server")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.mount("/mcp", mcp.sse_app())
 
 @mcp.resource("datasets://list")
 def list_datasets() -> str:
