@@ -31,7 +31,14 @@ ssh ubuntu@$EC2_IP << 'EOF'
   curl -H "X-API-Key: croissant-mcp-demo-key" http://localhost:8000/info
   
   echo "Testing SSE endpoint with curl..."
-  curl -H "Accept: text/event-stream" -H "X-API-Key: croissant-mcp-demo-key" http://localhost:8000/mcp -v
+  echo "1. Testing with X-API-Key header:"
+  curl -H "Accept: text/event-stream" -H "X-API-Key: croissant-mcp-demo-key" http://localhost:8000/mcp -v --max-time 3
+  
+  echo "2. Testing with env.API_KEY query parameter:"
+  curl -H "Accept: text/event-stream" "http://localhost:8000/mcp?env.API_KEY=croissant-mcp-demo-key" -v --max-time 3
+  
+  echo "3. Testing with invalid API key:"
+  curl -H "Accept: text/event-stream" -H "X-API-Key: invalid-key" http://localhost:8000/mcp -v --max-time 3
   
   echo "Viewing server logs..."
   sudo journalctl -u croissant-mcp -n 50

@@ -93,8 +93,12 @@ async def validate_api_key(request: Request) -> bool:
 
     api_key = request.headers.get(API_KEY_NAME)
     
-    if not api_key and "env.API_KEY" in request.query_params:
-        api_key = request.query_params["env.API_KEY"]
+    if not api_key:
+        query_params = dict(request.query_params)
+        for key, value in query_params.items():
+            if key == "env.API_KEY":
+                api_key = value
+                break
     
     if api_key == API_KEY:
         logger.info(f"Valid API key provided for {request.url.path}")
@@ -109,8 +113,13 @@ async def api_key_middleware(request: Request, call_next):
     if request.method == "OPTIONS":
         return await call_next(request)
     
-    if request.url.path in ["/", "/info", "/sse"]:
+    if request.url.path in ["/", "/info"]:
         return await call_next(request)
+        
+    logger.info(f"Request headers: {dict(request.headers)}")
+    logger.info(f"Query parameters: {dict(request.query_params)}")
+    logger.info(f"URL: {request.url}")
+        
     is_valid = await validate_api_key(request)
     if is_valid:
         return await call_next(request)
@@ -119,7 +128,7 @@ async def api_key_middleware(request: Request, call_next):
         code=-32000,
         message="Invalid or missing API key. Provide the API key either:\n"
                 "1. As 'X-API-Key' header\n"
-                "2. As 'env.API_KEY' query parameter (e.g. ?env.API_KEY=your-key)",
+                "2. As 'env.API_KEY' query parameter",
         id="1"
     ).to_dict()
     
@@ -237,13 +246,14 @@ async def mcp_jsonrpc(request: Request):
     jsonrpc = data.get("jsonrpc")
     method = data.get("method")
     params = data.get("params", {})
-    id = data.get("id")
+    id_value = data.get("id", "1")
+    id = str(id_value) if id_value is not None else "1"
     
     if jsonrpc != "2.0":
         error_response = JsonRpcError(
             code=-32600,
             message="Invalid Request",
-            id=id
+            id=str(id) if id is not None else "1"
         ).to_dict()
         return JSONResponse(status_code=400, content=error_response)
     
@@ -251,7 +261,7 @@ async def mcp_jsonrpc(request: Request):
         error_response = JsonRpcError(
             code=-32600,
             message="Invalid Request",
-            id=id
+            id=str(id) if id is not None else "1"
         ).to_dict()
         return JSONResponse(status_code=400, content=error_response)
     
@@ -270,7 +280,7 @@ async def mcp_jsonrpc(request: Request):
         
         response = JsonRpcResult(
             result={"datasets": results},
-            id=id
+            id=str(id) if id is not None else "1"
         ).to_dict()
         return JSONResponse(content=response)
     
@@ -280,7 +290,7 @@ async def mcp_jsonrpc(request: Request):
             error_response = JsonRpcError(
                 code=-32602,
                 message="Invalid params",
-                id=id
+                id=str(id) if id is not None else "1"
             ).to_dict()
             return JSONResponse(status_code=400, content=error_response)
         
@@ -288,14 +298,14 @@ async def mcp_jsonrpc(request: Request):
             if dataset["id"] == dataset_id:
                 response = JsonRpcResult(
                     result={"dataset": dataset},
-                    id=id
+                    id=str(id) if id is not None else "1"
                 ).to_dict()
                 return JSONResponse(content=response)
         
         error_response = JsonRpcError(
             code=-32001,
             message="Dataset not found",
-            id=id
+            id=str(id) if id is not None else "1"
         ).to_dict()
         return JSONResponse(status_code=404, content=error_response)
     
@@ -303,6 +313,6 @@ async def mcp_jsonrpc(request: Request):
         error_response = JsonRpcError(
             code=-32601,
             message="Method not found",
-            id=id
+            id=str(id) if id is not None else "1"
         ).to_dict()
         return JSONResponse(status_code=404, content=error_response)
