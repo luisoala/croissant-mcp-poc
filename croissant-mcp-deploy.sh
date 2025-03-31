@@ -1,4 +1,5 @@
 
+
 set -e
 
 echo "=== Croissant MCP Server Deployment ==="
@@ -20,7 +21,6 @@ else
   cd croissant-mcp-poc
 fi
 
-cd croissant-mcp-integration
 
 echo "Setting up Python virtual environment..."
 if [ ! -d "venv" ]; then
@@ -29,7 +29,11 @@ fi
 source venv/bin/activate
 
 echo "Installing dependencies..."
-pip install -r requirements.txt
+if [ -f "requirements.txt" ]; then
+  pip install -r requirements.txt
+else
+  pip install fastapi uvicorn pydantic sse-starlette
+fi
 
 echo "Configuring API key..."
 API_KEY=${1:-"croissant-mcp-demo-key"}
