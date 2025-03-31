@@ -1,6 +1,5 @@
 """
 Main entry point for the Croissant MCP Server with Cursor-compatible API key authentication
-and proper JSON-RPC format for SSE connections
 """
 import os
 import sys
@@ -8,7 +7,7 @@ import uvicorn
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
-from server_cursor_fixed_v3 import app
+from server_cursor_fixed import app
 
 if __name__ == "__main__":
     api_key = os.environ.get("MCP_API_KEY", "croissant-mcp-demo-key")

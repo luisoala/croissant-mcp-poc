@@ -3,7 +3,7 @@ Croissant MCP Server with Cursor-compatible API key authentication and SSE handl
 """
 import os
 import json
-from typing import Dict, Any, Optional, List, Union, Callable
+from typing import Dict, Any, Optional, List, Union, Callable, cast
 from fastapi import FastAPI, Request, Response, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -58,7 +58,7 @@ DATASETS = [
 
 class JsonRpcResponse:
     """Base class for JSON-RPC 2.0 responses"""
-    def __init__(self, id: str = None):
+    def __init__(self, id: Optional[str] = None):
         self.jsonrpc = "2.0"
         self.id = id or "1"  # Default ID if none provided
 
@@ -67,7 +67,7 @@ class JsonRpcResponse:
 
 class JsonRpcResult(JsonRpcResponse):
     """JSON-RPC 2.0 success response"""
-    def __init__(self, result: Any, id: str = None):
+    def __init__(self, result: Any, id: Optional[str] = None):
         super().__init__(id)
         self.result = result
 
@@ -78,7 +78,7 @@ class JsonRpcResult(JsonRpcResponse):
 
 class JsonRpcError(JsonRpcResponse):
     """JSON-RPC 2.0 error response"""
-    def __init__(self, code: int, message: str, data: Any = None, id: str = None):
+    def __init__(self, code: int, message: str, data: Any = None, id: Optional[str] = None):
         super().__init__(id)
         self.error = {
             "code": code,
