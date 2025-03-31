@@ -11,7 +11,7 @@ from server_mcp_sse import app
 
 if __name__ == "__main__":
     api_key = os.environ.get("MCP_API_KEY", "croissant-mcp-demo-key")
-    port = 8001  # Using port 8001 to avoid conflicts
+    port = 8000  # Using port 8001 to avoid conflicts
     
     print("Starting Croissant MCP Server with MCP-compliant SSE endpoint...")
     print("Available datasets will be indexed and searchable via MCP")
