@@ -1,5 +1,5 @@
-# MCP SDK - Install directly from GitHub
-git+https://github.com/modelcontextprotocol/python-sdk.git
+# MCP SDK with CLI support
+mcp[cli]
 
 # FastAPI for server
 fastapi>=0.95.0
