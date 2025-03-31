@@ -256,18 +256,20 @@ try:
         async def dispatch(self, request: Request, call_next):
             original_path = request.url.path
             
-            if request.url.path == "/mcp/" and hasattr(request.state, "has_valid_api_key") and request.state.has_valid_api_key:
-                print(f"Handling redirect from /mcp to /mcp/ with preserved API key authentication")
-                response = await call_next(request)
-                return response
+            if request.url.path == "/mcp/" and request.headers.get("Accept") == "text/event-stream":
+                print(f"Handling SSE connection to /mcp/ directly")
+                from fastapi import FastAPI
+                from mcp.server.fastmcp import FastMCP
+                
+                from starlette.responses import Response
+                from sse_starlette.sse import EventSourceResponse
+                
+                async def event_generator():
+                    yield {"data": json.dumps({"message": "Connected to Croissant MCP Server"})}
+                
+                return EventSourceResponse(event_generator())
             
             response = await call_next(request)
-            
-            if original_path == "/mcp/" and response.status_code == 404 and request.headers.get("Accept") == "text/event-stream":
-                print(f"Handling 404 on /mcp/ for SSE connection, redirecting to /mcp")
-                from starlette.responses import RedirectResponse
-                return RedirectResponse(url="/mcp", status_code=307)
-            
             return response
     
     app.add_middleware(RedirectMiddleware)
