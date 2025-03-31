@@ -36,23 +36,31 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if request.url.path in ["/health", "/", "/docs", "/openapi.json", "/redoc", "/mcp/auth-info"]:
             return await call_next(request)
         
-        if request.url.path == "/mcp" and request.headers.get("Accept") == "text/event-stream":
-            print("SSE connection from Cursor detected")
+        if (request.url.path == "/mcp" or request.url.path == "/mcp/") and request.headers.get("Accept") == "text/event-stream":
+            print(f"SSE connection from Cursor detected at {request.url.path}")
             
-            api_key_param = None
-            if "api_key" in request.query_params:
-                api_key_param = request.query_params["api_key"]
-                if api_key_param == API_KEY:
-                    print("Valid API key found in query parameters for SSE connection")
+            if not hasattr(request.state, "sse_api_key_checked"):
+                request.state.sse_api_key_checked = True
+                
+                api_key_param = None
+                if "api_key" in request.query_params:
+                    api_key_param = request.query_params["api_key"]
+                    if api_key_param == API_KEY:
+                        print(f"Valid API key found in query parameters for SSE connection to {request.url.path}")
+                        request.state.has_valid_api_key = True
+                        return await call_next(request)
+                
+                api_key_header = request.headers.get(API_KEY_NAME)
+                if api_key_header == API_KEY:
+                    print(f"Valid API key found in headers for SSE connection to {request.url.path}")
+                    request.state.has_valid_api_key = True
                     return await call_next(request)
+                
+                print(f"WARNING: Allowing SSE connection without valid API key for testing to {request.url.path}")
+                request.state.has_valid_api_key = True
             
-            api_key_header = request.headers.get(API_KEY_NAME)
-            if api_key_header == API_KEY:
-                print("Valid API key found in headers for SSE connection")
+            if hasattr(request.state, "has_valid_api_key") and request.state.has_valid_api_key:
                 return await call_next(request)
-            
-            print("WARNING: Allowing SSE connection without valid API key for testing")
-            return await call_next(request)
         
         api_key = request.headers.get(API_KEY_NAME)
         
