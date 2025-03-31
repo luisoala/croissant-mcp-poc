@@ -9,7 +9,7 @@ async def main():
     print("Connecting to Croissant MCP server...")
     
     try:
-        async with sse_client("http://localhost:8000") as client:
+        async with sse_client("http://localhost:8000/mcp") as client:
             print("Listing available resources...")
             try:
                 resources = await client.list_resources()

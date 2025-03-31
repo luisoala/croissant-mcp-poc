@@ -1,4 +1,7 @@
-from mcp.server.fastmcp import FastMCP, Context
+"""
+Simplified MCP server implementation for Croissant datasets
+"""
+from mcp.server.fastmcp import FastMCP
 import os
 import json
 from typing import Dict, List, Optional, Any
@@ -7,14 +10,15 @@ from starlette.middleware.cors import CORSMiddleware
 from dataset_index import CroissantDatasetIndex
 from search import CroissantSearch
 
-mcp = FastMCP("Croissant Dataset Index")
-
+# Initialize dataset index and search engine
 dataset_index = CroissantDatasetIndex()
 dataset_index.load_example_datasets()
 search_engine = CroissantSearch(dataset_index)
 
+# Create FastAPI app
 app = FastAPI(title="Croissant MCP Server")
 
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,8 +27,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.mount("/mcp", mcp.sse_app())
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "Croissant MCP Server"}
 
+@app.get("/info")
+async def server_info():
+    return {
+        "name": "Croissant Dataset Index",
+        "version": "0.1.0",
+        "description": "MCP server for Croissant datasets across multiple platforms",
+        "datasets_count": len(dataset_index.list_datasets()),
+        "providers": search_engine.get_available_providers()
+    }
+
+@app.get("/")
+async def root():
+    return {"message": "Welcome to Croissant MCP Server", "docs": "/docs", "mcp": "/mcp"}
+
+# Create MCP server
+mcp = FastMCP("Croissant Dataset Index")
+
+# Register MCP resources and tools
 @mcp.resource("datasets://list")
 def list_datasets() -> str:
     """List all available datasets in the index"""
@@ -141,5 +165,8 @@ def dataset_search_prompt() -> str:
     - "Show me datasets with CSV format"
     """
 
-if __name__ == "__main__":
-    mcp.run()
+try:
+    app.mount("/mcp", mcp.sse_app())
+    print("MCP server mounted at /mcp")
+except Exception as e:
+    print(f"Error mounting MCP server: {e}")

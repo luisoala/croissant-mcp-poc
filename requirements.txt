@@ -1,5 +1,5 @@
-# MCP SDK with CLI support
-mcp[cli]
+# MCP SDK
+mcp>=0.1.0
 
 # FastAPI for server
 fastapi>=0.95.0
@@ -8,3 +8,4 @@ uvicorn>=0.21.1
 # Utilities
 pydantic>=2.0.0
 typing-extensions>=4.5.0
+httpx>=0.24.0
