@@ -1,4 +1,3 @@
-
 set -e
 
 echo "=== Updating EC2 Server with Cursor-compatible SSE Endpoint ==="
@@ -32,7 +31,7 @@ ssh ubuntu@$EC2_IP << 'EOF'
   curl -H "X-API-Key: croissant-mcp-demo-key" http://localhost:8000/info
   
   echo "Testing SSE endpoint with curl..."
-  curl -H "Accept: text/event-stream" -H "X-API-Key: croissant-mcp-demo-key" http://localhost:8000/sse -v
+  curl -H "Accept: text/event-stream" -H "X-API-Key: croissant-mcp-demo-key" http://localhost:8000/mcp -v
   
   echo "Viewing server logs..."
   sudo journalctl -u croissant-mcp -n 50
@@ -40,14 +39,14 @@ EOF
 
 echo "=== EC2 Server Update Complete ==="
 echo "The server is now running with the Cursor-compatible SSE endpoint"
-echo "Cursor should be configured to use: http://$EC2_IP:8000/sse"
+echo "Cursor should be configured to use: http://$EC2_IP:8000/mcp"
 echo "with API_KEY: croissant-mcp-demo-key"
 
 cat > mcp_cursor_ec2.json << EOF
 {
   "mcpServers": {
     "croissant-datasets": {
-      "url": "http://$EC2_IP:8000/sse",
+      "url": "http://$EC2_IP:8000/mcp",
       "env": {
         "API_KEY": "croissant-mcp-demo-key"
       }
@@ -60,4 +59,4 @@ echo "Cursor MCP configuration saved to mcp_cursor_ec2.json"
 echo "To use this configuration in Cursor:"
 echo "1. Copy this file to ~/.cursor/mcp.json"
 echo "2. Restart Cursor"
-echo "3. Cursor should connect to the MCP server at http://$EC2_IP:8000/sse"
+echo "3. Cursor should connect to the MCP server at http://$EC2_IP:8000/mcp"

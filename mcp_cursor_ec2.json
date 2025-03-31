@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "croissant-datasets": {
-      "url": "http://44.242.230.242:8000/sse",
+      "url": "http://44.242.230.242:8000/mcp",
       "env": {
         "API_KEY": "croissant-mcp-demo-key"
       }
