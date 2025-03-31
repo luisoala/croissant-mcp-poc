@@ -11,4 +11,4 @@ from server import mcp
 if __name__ == "__main__":
     print("Starting Croissant MCP Server...")
     print("Available datasets will be indexed and searchable via MCP")
-    mcp.run(host="0.0.0.0", port=8000)
+    mcp.run()
