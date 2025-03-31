@@ -56,8 +56,11 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                     request.state.has_valid_api_key = True
                     return await call_next(request)
                 
-                print(f"WARNING: Allowing SSE connection without valid API key for testing to {request.url.path}")
-                request.state.has_valid_api_key = True
+                print(f"Invalid or missing API key for SSE connection to {request.url.path}")
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Invalid or missing API key for SSE connection"}
+                )
             
             if hasattr(request.state, "has_valid_api_key") and request.state.has_valid_api_key:
                 return await call_next(request)
@@ -258,6 +261,20 @@ try:
             
             if request.url.path == "/mcp/" and request.headers.get("Accept") == "text/event-stream":
                 print(f"Handling SSE connection to /mcp/ directly")
+                
+                api_key = request.headers.get(API_KEY_NAME)
+                if not api_key and "api_key" in request.query_params:
+                    api_key = request.query_params["api_key"]
+                
+                if api_key != API_KEY:
+                    print(f"Invalid or missing API key for SSE connection to /mcp/")
+                    return JSONResponse(
+                        status_code=403,
+                        content={"detail": "Invalid or missing API key for SSE connection"}
+                    )
+                
+                print(f"Valid API key provided for SSE connection to /mcp/")
+                
                 from fastapi import FastAPI
                 from mcp.server.fastmcp import FastMCP
                 
