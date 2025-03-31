@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "croissant-datasets": {
+      "url": "https://slack-message-app-tunnel-0sn63los.devinapps.com/mcp",
+      "env": {
+        "API_KEY": "croissant-mcp-demo-key"
+      }
+    }
+  }
+}
