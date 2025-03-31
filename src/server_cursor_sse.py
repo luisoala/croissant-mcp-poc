@@ -124,14 +124,15 @@ async def validate_api_key(request: Request) -> bool:
         logger.info(f"Valid API key provided in cookie for {request.url.path}")
         return True
 
-    try:
-        if request.method == "GET" and request.url.path == "/sse":
-            env_api_key = request.query_params.get("env.API_KEY")
-            if env_api_key and env_api_key == API_KEY:
-                logger.info(f"Valid API key provided in env.API_KEY query parameter for {request.url.path}")
-                return True
-    except Exception as e:
-        logger.warning(f"Error checking for env.API_KEY: {e}")
+    env_api_key = request.query_params.get("env.API_KEY")
+    if env_api_key and env_api_key == API_KEY:
+        logger.info(f"Valid API key provided in env.API_KEY query parameter for {request.url.path}")
+        return True
+        
+    api_key_env = request.query_params.get("API_KEY")
+    if api_key_env and api_key_env == API_KEY:
+        logger.info(f"Valid API key provided in API_KEY query parameter for {request.url.path}")
+        return True
     
     logger.warning(f"Invalid or missing API key for {request.url.path}")
     return False
