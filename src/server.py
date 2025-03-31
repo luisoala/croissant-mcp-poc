@@ -1,14 +1,30 @@
 """
-Simplified MCP server implementation for Croissant datasets
+Simplified MCP server implementation for Croissant datasets with API key authentication
 """
 from mcp.server.fastmcp import FastMCP
 import os
 import json
 from typing import Dict, List, Optional, Any
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, HTTPException, Header, Security, Request
+from fastapi.security.api_key import APIKeyHeader
 from starlette.middleware.cors import CORSMiddleware
 from dataset_index import CroissantDatasetIndex
 from search import CroissantSearch
+from middleware.api_key import APIKeyMiddleware
+
+API_KEY = os.environ.get("MCP_API_KEY", "croissant-mcp-demo-key")
+API_KEY_NAME = "X-API-Key"
+api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
+
+async def get_api_key(api_key: str = Security(api_key_header)):
+    if api_key == API_KEY:
+        return api_key
+    if api_key is None:
+        print("Warning: Request without API key")
+        return None
+    raise HTTPException(
+        status_code=403, detail="Invalid API key"
+    )
 
 # Initialize dataset index and search engine
 dataset_index = CroissantDatasetIndex()
@@ -26,6 +42,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize dataset index and search engine
+dataset_index = CroissantDatasetIndex()
+dataset_index.load_example_datasets()
+search_engine = CroissantSearch(dataset_index)
 
 @app.get("/health")
 async def health_check():
@@ -165,8 +186,20 @@ def dataset_search_prompt() -> str:
     - "Show me datasets with CSV format"
     """
 
+@app.get("/mcp/auth-info")
+async def mcp_auth_info(api_key: str = Depends(get_api_key)):
+    """Return authentication information for MCP clients"""
+    return {
+        "auth_method": "api_key",
+        "api_key_header": API_KEY_NAME,
+        "status": "authenticated" if api_key else "anonymous"
+    }
+
 try:
-    app.mount("/mcp", mcp.sse_app())
-    print("MCP server mounted at /mcp")
+    mcp_app = mcp.sse_app()
+    
+    
+    app.mount("/mcp", mcp_app)
+    print("MCP server mounted at /mcp with API key authentication")
 except Exception as e:
     print(f"Error mounting MCP server: {e}")

@@ -9,29 +9,13 @@ from fastapi import FastAPI, Depends, HTTPException, Header, Security, Request
 from fastapi.security.api_key import APIKeyHeader
 from starlette.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi.responses import JSONResponse
 from dataset_index import CroissantDatasetIndex
 from search import CroissantSearch
 
 API_KEY = os.environ.get("MCP_API_KEY", "croissant-mcp-demo-key")
 API_KEY_NAME = "X-API-Key"
-
-class APIKeyMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        if request.url.path in ["/health", "/", "/docs", "/openapi.json", "/redoc"]:
-            return await call_next(request)
-            
-        api_key = request.headers.get(API_KEY_NAME)
-        
-        if api_key == API_KEY:
-            return await call_next(request)
-        elif api_key is None and not request.url.path.startswith("/mcp"):
-            print(f"Warning: Request to {request.url.path} without API key")
-            return await call_next(request)
-        else:
-            return JSONResponse(
-                status_code=403,
-                content={"detail": "Invalid or missing API key"}
-            )
+API_KEY_ENV_VAR = "API_KEY"  # Environment variable name for Cursor integration
 
 dataset_index = CroissantDatasetIndex()
 dataset_index.load_example_datasets()
@@ -47,7 +31,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from fastapi.responses import JSONResponse
+async def validate_api_key(request: Request):
+    if request.url.path in ["/health", "/", "/docs", "/openapi.json", "/redoc", "/mcp/auth-info"]:
+        return True
+    
+    if request.url.path == "/mcp" and request.headers.get("Accept") == "text/event-stream":
+        print("SSE connection from Cursor detected - allowing without header auth")
+        return True
+        
+    api_key = request.headers.get(API_KEY_NAME)
+    
+    if not api_key and "api_key" in request.query_params:
+        api_key = request.query_params["api_key"]
+    
+    if api_key == API_KEY:
+        return True
+    
+    if not request.url.path.startswith("/mcp"):
+        print(f"Warning: Request to {request.url.path} without API key")
+        return True
+        
+    return False
+
+class APIKeyMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        is_valid = await validate_api_key(request)
+        
+        if is_valid:
+            return await call_next(request)
+        else:
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Invalid or missing API key"}
+            )
+
 app.add_middleware(APIKeyMiddleware)
 
 @app.get("/health")
@@ -63,12 +80,23 @@ async def server_info():
         "datasets_count": len(dataset_index.list_datasets()),
         "providers": search_engine.get_available_providers(),
         "auth_method": "api_key",
-        "api_key_header": API_KEY_NAME
+        "api_key_header": API_KEY_NAME,
+        "api_key_env_var": API_KEY_ENV_VAR
     }
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to Croissant MCP Server", "docs": "/docs", "mcp": "/mcp"}
+
+@app.get("/mcp/auth-info")
+async def mcp_auth_info():
+    """Return authentication information for MCP clients"""
+    return {
+        "auth_method": "api_key",
+        "api_key_header": API_KEY_NAME,
+        "api_key_env_var": API_KEY_ENV_VAR,
+        "default_key": "croissant-mcp-demo-key"
+    }
 
 mcp = FastMCP("Croissant Dataset Index")
 
@@ -188,19 +216,13 @@ def dataset_search_prompt() -> str:
     - "Show me datasets with CSV format"
     """
 
-@app.get("/mcp/auth-info")
-async def mcp_auth_info():
-    """Return authentication information for MCP clients"""
-    return {
-        "auth_method": "api_key",
-        "api_key_header": API_KEY_NAME,
-        "api_key_env_var": "API_KEY"
-    }
-
 try:
     mcp_app = mcp.sse_app()
     
     app.mount("/mcp", mcp_app)
     print("MCP server mounted at /mcp with API key authentication")
+    print(f"API Key: {API_KEY}")
+    print(f"API Key Header: {API_KEY_NAME}")
+    print(f"API Key Environment Variable: {API_KEY_ENV_VAR}")
 except Exception as e:
     print(f"Error mounting MCP server: {e}")

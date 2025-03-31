@@ -39,31 +39,39 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if (request.url.path == "/mcp" or request.url.path == "/mcp/") and request.headers.get("Accept") == "text/event-stream":
             print(f"SSE connection from Cursor detected at {request.url.path}")
             
-            if not hasattr(request.state, "sse_api_key_checked"):
-                request.state.sse_api_key_checked = True
-                
-                api_key_param = None
-                if "api_key" in request.query_params:
-                    api_key_param = request.query_params["api_key"]
-                    if api_key_param == API_KEY:
-                        print(f"Valid API key found in query parameters for SSE connection to {request.url.path}")
-                        request.state.has_valid_api_key = True
-                        return await call_next(request)
-                
-                api_key_header = request.headers.get(API_KEY_NAME)
-                if api_key_header == API_KEY:
-                    print(f"Valid API key found in headers for SSE connection to {request.url.path}")
-                    request.state.has_valid_api_key = True
-                    return await call_next(request)
-                
-                print(f"Invalid or missing API key for SSE connection to {request.url.path}")
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "Invalid or missing API key for SSE connection"}
-                )
+            api_key = request.headers.get(API_KEY_NAME)
             
-            if hasattr(request.state, "has_valid_api_key") and request.state.has_valid_api_key:
+            if not api_key and "api_key" in request.query_params:
+                api_key = request.query_params["api_key"]
+            
+            if not api_key and request.method == "POST":
+                try:
+                    body_bytes = await request.body()
+                    body = json.loads(body_bytes)
+                    
+                    if "env" in body and API_KEY_ENV_VAR in body["env"]:
+                        api_key = body["env"][API_KEY_ENV_VAR]
+                        print(f"Found API key in request body env.{API_KEY_ENV_VAR} for SSE connection")
+                    
+                    async def get_body():
+                        return body_bytes
+                    
+                    request._body = body_bytes
+                    request.body = get_body
+                    
+                except Exception as e:
+                    print(f"Error parsing request body for SSE connection: {e}")
+            
+            if api_key == API_KEY:
+                print(f"Valid API key provided for SSE connection to {request.url.path}")
+                request.state.has_valid_api_key = True
                 return await call_next(request)
+            
+            print(f"Invalid or missing API key for SSE connection to {request.url.path}")
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Invalid or missing API key for SSE connection"}
+            )
         
         api_key = request.headers.get(API_KEY_NAME)
         
@@ -255,47 +263,12 @@ def dataset_search_prompt() -> str:
     """
 
 try:
-    class RedirectMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next):
-            original_path = request.url.path
-            
-            if request.url.path == "/mcp/" and request.headers.get("Accept") == "text/event-stream":
-                print(f"Handling SSE connection to /mcp/ directly")
-                
-                api_key = request.headers.get(API_KEY_NAME)
-                if not api_key and "api_key" in request.query_params:
-                    api_key = request.query_params["api_key"]
-                
-                if api_key != API_KEY:
-                    print(f"Invalid or missing API key for SSE connection to /mcp/")
-                    return JSONResponse(
-                        status_code=403,
-                        content={"detail": "Invalid or missing API key for SSE connection"}
-                    )
-                
-                print(f"Valid API key provided for SSE connection to /mcp/")
-                
-                from fastapi import FastAPI
-                from mcp.server.fastmcp import FastMCP
-                
-                from starlette.responses import Response
-                from sse_starlette.sse import EventSourceResponse
-                
-                async def event_generator():
-                    yield {"data": json.dumps({"message": "Connected to Croissant MCP Server"})}
-                
-                return EventSourceResponse(event_generator())
-            
-            response = await call_next(request)
-            return response
-    
-    app.add_middleware(RedirectMiddleware)
-    
     mcp_app = mcp.sse_app()
     
     app.mount("/mcp", mcp_app)
+    app.mount("/mcp/", mcp_app)
     
-    print("MCP server mounted at /mcp with Cursor-compatible API key authentication")
+    print("MCP server mounted at /mcp and /mcp/ with Cursor-compatible API key authentication")
     print(f"API Key: {API_KEY}")
     print(f"API Key Header: {API_KEY_NAME}")
     print(f"API Key Environment Variable: {API_KEY_ENV_VAR}")
