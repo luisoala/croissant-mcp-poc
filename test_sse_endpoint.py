@@ -7,7 +7,7 @@ import time
 import sys
 import os
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = os.environ.get("MCP_SERVER_URL", "http://44.242.230.242:8000")
 API_KEY = os.environ.get("MCP_API_KEY", "croissant-mcp-demo-key")
 
 def test_info_endpoint():
