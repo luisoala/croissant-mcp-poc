@@ -11,14 +11,20 @@ echo "Updating system packages..."
 sudo apt update
 sudo apt install -y python3 python3-pip python3-venv git
 
-echo "Cloning repository..."
-if [ -d "croissant-mcp-poc" ]; then
-  echo "Repository already exists, updating..."
-  cd croissant-mcp-poc
+echo "Checking repository status..."
+if git remote -v 2>/dev/null | grep -q "luisoala/croissant-mcp-poc"; then
+  echo "Already in the repository, updating..."
   git pull
 else
-  git clone https://github.com/luisoala/croissant-mcp-poc.git
-  cd croissant-mcp-poc
+  echo "Cloning repository..."
+  if [ -d "croissant-mcp-poc" ]; then
+    echo "Repository directory exists, entering and updating..."
+    cd croissant-mcp-poc
+    git pull
+  else
+    git clone https://github.com/luisoala/croissant-mcp-poc.git
+    cd croissant-mcp-poc
+  fi
 fi
 
 
