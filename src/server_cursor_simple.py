@@ -252,9 +252,30 @@ def dataset_search_prompt() -> str:
     """
 
 try:
+    class RedirectMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            original_path = request.url.path
+            
+            if request.url.path == "/mcp/" and hasattr(request.state, "has_valid_api_key") and request.state.has_valid_api_key:
+                print(f"Handling redirect from /mcp to /mcp/ with preserved API key authentication")
+                response = await call_next(request)
+                return response
+            
+            response = await call_next(request)
+            
+            if original_path == "/mcp/" and response.status_code == 404 and request.headers.get("Accept") == "text/event-stream":
+                print(f"Handling 404 on /mcp/ for SSE connection, redirecting to /mcp")
+                from starlette.responses import RedirectResponse
+                return RedirectResponse(url="/mcp", status_code=307)
+            
+            return response
+    
+    app.add_middleware(RedirectMiddleware)
+    
     mcp_app = mcp.sse_app()
     
     app.mount("/mcp", mcp_app)
+    
     print("MCP server mounted at /mcp with Cursor-compatible API key authentication")
     print(f"API Key: {API_KEY}")
     print(f"API Key Header: {API_KEY_NAME}")
