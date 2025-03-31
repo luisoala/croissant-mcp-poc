@@ -11,6 +11,8 @@ dataset_index = CroissantDatasetIndex()
 dataset_index.load_example_datasets()
 search_engine = CroissantSearch(dataset_index)
 
+asgi_app = mcp.sse_app()
+
 @mcp.resource("datasets://list")
 def list_datasets() -> str:
     """List all available datasets in the index"""
