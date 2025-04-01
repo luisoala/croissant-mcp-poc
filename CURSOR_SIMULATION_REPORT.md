@@ -26,7 +26,7 @@ This report documents the testing of the Croissant MCP Server implementation usi
 
 ### 2. Tools Listing Test
 
-- **Status**: ⚠️ PARTIAL
+- **Status**: ❌ FAIL
 - **Details**:
   - Server returns 202 Accepted status
   - Never completes the request, times out after 10 seconds
@@ -34,7 +34,7 @@ This report documents the testing of the Croissant MCP Server implementation usi
 
 ### 3. Tool Calling Test
 
-- **Status**: ⚠️ NOT TESTED
+- **Status**: ❌ NOT TESTED
 - **Details**:
   - Could not test tool calling due to tools listing failure
 

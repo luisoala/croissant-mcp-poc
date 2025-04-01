@@ -12,8 +12,8 @@ from typing import Dict, Any, List, Optional, Tuple
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-SERVER_URL = "http://localhost:8001/sse"
-MESSAGES_URL = "http://localhost:8001/messages"
+SERVER_URL = "http://localhost:8000/sse"
+MESSAGES_URL = "http://localhost:8000/messages"
 TIMEOUT = 10  # Timeout in seconds
 POLL_INTERVAL = 0.5  # Seconds between polling for async responses
 
