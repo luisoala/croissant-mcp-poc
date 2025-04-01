@@ -91,7 +91,7 @@ search_tool = types.Tool(
 server = Server("Croissant MCP Server")
 
 @server.list_tools()
-async def list_tools() -> List[types.Tool]:
+def list_tools() -> List[types.Tool]:
     """List available Croissant dataset tools."""
     logger.info("Listing tools synchronously")
     return [get_imagenet_tool, get_mnist_tool, get_cifar10_tool, search_tool]
