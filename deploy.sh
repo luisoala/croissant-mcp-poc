@@ -98,8 +98,11 @@ User=$USER
 Group=$USER
 WorkingDirectory=$APP_DIR
 Environment="PATH=$VENV_DIR/bin"
-ExecStart=$VENV_DIR/bin/uvicorn src.server:app --host 0.0.0.0 --port 8000
-Restart=always
+Environment="PYTHONPATH=$APP_DIR"
+Environment="PYTHONUNBUFFERED=1"
+ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate && $VENV_DIR/bin/uvicorn src.server:app --host 0.0.0.0 --port 8000 --log-level debug'
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
