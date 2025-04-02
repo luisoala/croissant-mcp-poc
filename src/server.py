@@ -126,48 +126,5 @@ def get_dataset_metadata(dataset_id: str) -> Dict[str, Any]:
             }
     return {"metadata": {"id": dataset_id, "error": "Dataset not found"}}
 
-@mcp.tool()
-@execute_on_main_thread
-def get_dataset_preview(dataset_id: str, rows: int = 5) -> Dict[str, Any]:
-    """Get a preview of the dataset"""
-    for filename in CROISSANT_FILES:
-        data = load_croissant_file(filename)
-        if data and data.get('name') == dataset_id:
-            # Extract table schemas and data references
-            tables = data.get('tables', [])
-            preview_data = []
-            
-            for table in tables[:rows]:  # Limit to requested number of rows
-                preview_data.append({
-                    "name": table.get('name', ''),
-                    "schema": table.get('schema', {}),
-                    "data_url": table.get('data', {}).get('url', '')
-                })
-                
-            return {"preview": {"data": preview_data}}
-            
-    return {"preview": {"error": "Dataset not found"}}
-
-@mcp.tool()
-@execute_on_main_thread
-def get_dataset_stats(dataset_id: str) -> Dict[str, Any]:
-    """Get basic statistics about the dataset"""
-    for filename in CROISSANT_FILES:
-        data = load_croissant_file(filename)
-        if data and data.get('name') == dataset_id:
-            tables = data.get('tables', [])
-            total_columns = sum(len(table.get('schema', {}).get('fields', [])) for table in tables)
-            
-            return {
-                "stats": {
-                    "num_tables": len(tables),
-                    "total_columns": total_columns,
-                    "file_format": [table.get('data', {}).get('format', '') for table in tables],
-                    "has_schema": all('schema' in table for table in tables)
-                }
-            }
-            
-    return {"stats": {"error": "Dataset not found"}}
-
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
