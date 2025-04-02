@@ -1,18 +1,21 @@
 # Core dependencies
-fastapi>=0.95.0
-uvicorn[standard]>=0.21.1
-pydantic>=2.0.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.4.2
 python-multipart>=0.0.6
-sse-starlette>=1.6.5
+sse-starlette>=1.7.0
 
 # MCP SDK
-mcp>=0.1.0  # Includes MCP Inspector functionality
+mcp-sdk>=0.1.0  # Includes MCP Inspector functionality
 
 # Utilities
-httpx>=0.24.0
+httpx>=0.25.1
 python-dotenv>=1.0.0
 
 # Production
 gunicorn>=21.2.0
 uvicorn[standard]>=0.21.1
 python-json-logger>=2.0.0
+
+# Additional dependencies
+aiofiles>=23.2.1
