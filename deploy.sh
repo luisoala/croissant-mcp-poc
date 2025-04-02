@@ -115,8 +115,23 @@ deploy_server() {
     # Create and activate virtual environment
     echo "Setting up virtual environment..."
     cd $APP_DIR
+    echo "Current directory: $(pwd)"
+    echo "Creating virtual environment..."
     python3 -m venv venv
+    echo "Virtual environment created at: $APP_DIR/venv"
+    
+    # Verify virtual environment
+    if [ ! -f "$APP_DIR/venv/bin/python" ]; then
+        echo "Error: Virtual environment Python executable not found!"
+        echo "Checking venv directory contents:"
+        ls -la $APP_DIR/venv/bin/
+        exit 1
+    fi
+    
+    echo "Activating virtual environment..."
     source venv/bin/activate
+    echo "Python path: $(which python)"
+    echo "Python version: $(python --version)"
 
     # Install git if not present
     if ! command -v git &> /dev/null; then
@@ -157,10 +172,10 @@ After=network.target
 User=$USER
 Group=$USER
 WorkingDirectory=$APP_DIR
-Environment="PATH=$APP_DIR/venv/bin"
+Environment="PATH=$APP_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="PYTHONPATH=$APP_DIR"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=$APP_DIR/venv/bin/uvicorn src.server:app --host 0.0.0.0 --port 8000 --log-level debug
+ExecStart=/bin/bash -c 'source $APP_DIR/venv/bin/activate && $APP_DIR/venv/bin/uvicorn src.server:app --host 0.0.0.0 --port 8000 --log-level debug'
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:/var/log/croissant-mcp.log
