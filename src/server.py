@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 from mcp.server.fastmcp import FastMCP
 from mcp.server.sse import SseServerTransport
-from mcp.server.types import Tool
+from mcp.tool import Tool
 from typing import Dict, List, Optional, Any, TypeVar, Generic
 import os
 from dotenv import load_dotenv
