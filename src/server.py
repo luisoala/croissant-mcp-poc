@@ -4,7 +4,7 @@ Main server implementation for the Croissant MCP server
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
@@ -12,9 +12,11 @@ from mcp.server.fastmcp import FastMCP
 from modelcontextprotocol.server.fastapi import FastMCP as ModelContextProtocolFastMCP
 from modelcontextprotocol.server.sse import SSEServerTransport
 from modelcontextprotocol.server.types import Tool
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, TypeVar, Generic
 import os
 from dotenv import load_dotenv
+import signal
+import sys
 
 from .config.settings import settings
 from .tools import dataset_tools
@@ -118,6 +120,27 @@ async def events(request: Request):
 # Mount MCP routes
 app.include_router(mcp.app, prefix="/mcp")
 
+# Global state for graceful shutdown
+shutdown_event = asyncio.Event()
+
+@app.get("/shutdown")
+async def shutdown_server():
+    """Endpoint to gracefully shutdown the server"""
+    shutdown_event.set()
+    return {"message": "Server shutting down..."}
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize resources on startup"""
+    print("Starting up server...")
+    # Add any startup initialization here
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Cleanup resources on shutdown"""
+    print("Shutting down server...")
+    # Add any cleanup code here
+
 # Error handling
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
@@ -127,3 +150,32 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "Internal server error"}
     )
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    config = uvicorn.Config(
+        "src.server:app",
+        host="0.0.0.0",
+        port=8000,
+        log_level="info",
+        timeout_graceful_shutdown=5
+    )
+    
+    server = uvicorn.Server(config)
+    
+    # Handle shutdown signal
+    def handle_shutdown(sig, frame):
+        print("Received shutdown signal")
+        shutdown_event.set()
+    
+    signal.signal(signal.SIGTERM, handle_shutdown)
+    signal.signal(signal.SIGINT, handle_shutdown)
+    
+    try:
+        server.run()
+    except KeyboardInterrupt:
+        print("Received keyboard interrupt")
+        shutdown_event.set()
+    finally:
+        print("Server shutdown complete")
