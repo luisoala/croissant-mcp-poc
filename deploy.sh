@@ -206,52 +206,72 @@ EOF
     sudo mkdir -p /etc/nginx/sites-available
     sudo mkdir -p /etc/nginx/sites-enabled
 
+    # Generate self-signed certificate if it doesn't exist
+    if [ ! -f "/etc/nginx/ssl/croissant-mcp.crt" ]; then
+        echo "Generating self-signed SSL certificate..."
+        sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+            -keyout /etc/nginx/ssl/croissant-mcp.key \
+            -out /etc/nginx/ssl/croissant-mcp.crt \
+            -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
+    fi
+
     # Create Nginx configuration
-    sudo tee $NGINX_CONFIG << EOF
+    cat > /tmp/croissant-mcp.conf << 'EOL'
 server {
     listen 80;
     server_name _;
 
-    # Redirect all HTTP traffic to HTTPS
-    return 301 https://\$host\$request_uri;
-}
-
-server {
-    listen 443 ssl;
-    server_name _;
-
-    # SSL configuration
-    ssl_certificate /etc/nginx/ssl/croissant-mcp.crt;
-    ssl_certificate_key /etc/nginx/ssl/croissant-mcp.key;
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-
     location / {
         proxy_pass http://localhost:8000;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
-EOF
 
-    # Enable Nginx configuration
-    echo "Enabling Nginx configuration..."
-    sudo ln -sf $NGINX_CONFIG /etc/nginx/sites-enabled/
-    sudo rm -f /etc/nginx/sites-enabled/default
+# Optional HTTPS configuration - uncomment if you have valid SSL certificates
+#server {
+#    listen 443 ssl;
+#    server_name _;
+#
+#    ssl_certificate /etc/nginx/ssl/croissant-mcp.crt;
+#    ssl_certificate_key /etc/nginx/ssl/croissant-mcp.key;
+#    ssl_protocols TLSv1.2 TLSv1.3;
+#    ssl_ciphers HIGH:!aNULL:!MD5;
+#
+#    location / {
+#        proxy_pass http://localhost:8000;
+#        proxy_http_version 1.1;
+#        proxy_set_header Upgrade $http_upgrade;
+#        proxy_set_header Connection 'upgrade';
+#        proxy_set_header Host $host;
+#        proxy_cache_bypass $http_upgrade;
+#        proxy_set_header X-Real-IP $remote_addr;
+#        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+#        proxy_set_header X-Forwarded-Proto $scheme;
+#    }
+#}
+EOL
 
-    # Test Nginx configuration
+    # Copy configuration to Nginx
+    sudo cp /tmp/croissant-mcp.conf /etc/nginx/sites-available/
+    sudo ln -sf /etc/nginx/sites-available/croissant-mcp.conf /etc/nginx/sites-enabled/
+    
+    # Test and reload Nginx
     echo "Testing Nginx configuration..."
     sudo nginx -t
-
-    # Reload Nginx
-    echo "Reloading Nginx..."
-    sudo systemctl reload nginx
+    if [ $? -eq 0 ]; then
+        echo "Reloading Nginx..."
+        sudo systemctl reload nginx
+    else
+        echo "Error: Nginx configuration test failed"
+        exit 1
+    fi
 
     # Reload systemd daemon
     echo "Reloading systemd daemon..."
