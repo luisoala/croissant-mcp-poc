@@ -250,8 +250,12 @@ EOF
     echo "Checking service status..."
     sudo systemctl status $SERVICE_NAME
     
-    echo "Checking service logs..."
-    sudo journalctl -u $SERVICE_NAME -n 50
+    echo "Checking service logs with full output..."
+    sudo journalctl -u $SERVICE_NAME -n 50 --no-pager
+    echo "Checking error logs..."
+    sudo journalctl -u $SERVICE_NAME -n 50 --no-pager -p err
+    echo "Checking service output..."
+    sudo journalctl -u $SERVICE_NAME -n 50 --no-pager -o cat
 
     echo "Deployment complete! The server should be running on http://localhost:8000"
 }

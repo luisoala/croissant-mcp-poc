@@ -48,6 +48,8 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up Croissant MCP Server...")
     # Load datasets
     dataset_tools.load_sample_datasets()
+    # Initialize MCP server
+    mcp = FastMCP("Croissant MCP Server")
     yield
     # Shutdown
     logger.info("Shutting down Croissant MCP Server...")
