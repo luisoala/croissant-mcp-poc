@@ -169,13 +169,15 @@ Description=Croissant MCP Server
 After=network.target
 
 [Service]
-User=$USER
-Group=$USER
+User=ubuntu
+Group=ubuntu
 WorkingDirectory=$APP_DIR
 Environment="PATH=$APP_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="PYTHONPATH=$APP_DIR"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/bin/bash -c 'source $APP_DIR/venv/bin/activate && $APP_DIR/venv/bin/uvicorn src.server:app --host 0.0.0.0 --port 8000 --log-level debug'
+Environment="PYTHONPATH=$APP_DIR"
+Environment="LOG_LEVEL=debug"
+ExecStart=/bin/bash -c 'source $APP_DIR/venv/bin/activate && PYTHONPATH=$APP_DIR $APP_DIR/venv/bin/uvicorn src.server:app --host 0.0.0.0 --port 8000 --log-level debug'
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:/var/log/croissant-mcp.log
@@ -187,7 +189,13 @@ EOF
 
     # Create log files with proper permissions
     sudo touch /var/log/croissant-mcp.log /var/log/croissant-mcp.error.log
-    sudo chown $USER:$USER /var/log/croissant-mcp.log /var/log/croissant-mcp.error.log
+    sudo chown ubuntu:ubuntu /var/log/croissant-mcp.log /var/log/croissant-mcp.error.log
+    sudo chmod 644 /var/log/croissant-mcp.log /var/log/croissant-mcp.error.log
+
+    # Set proper permissions for the application directory
+    sudo chown -R ubuntu:ubuntu $APP_DIR
+    sudo chmod -R 755 $APP_DIR
+    sudo chmod -R 777 $APP_DIR/venv
 
     # Create Nginx configuration directory if it doesn't exist
     echo "Setting up Nginx configuration..."
@@ -272,6 +280,8 @@ EOF
     sudo journalctl -u $SERVICE_NAME -n 50 --no-pager -p err
     echo "Checking service output..."
     sudo journalctl -u $SERVICE_NAME -n 50 --no-pager -o cat
+    echo "Checking application error log..."
+    sudo cat /var/log/croissant-mcp.error.log
 
     echo "Deployment complete! The server should be running on http://localhost:8000"
 }
