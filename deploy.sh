@@ -81,10 +81,26 @@ deploy_server() {
         sudo apt-get install -y git
     fi
 
+    # Install nginx if not present
+    if ! command -v nginx &> /dev/null; then
+        echo "Installing nginx..."
+        sudo apt-get update
+        sudo apt-get install -y nginx
+    fi
+
     # Install dependencies
     echo "Installing dependencies..."
     pip install --upgrade pip
+    pip install wheel setuptools
     pip install -r requirements.txt
+
+    # Verify installation
+    echo "Verifying installation..."
+    if ! python3 -c "import modelcontextprotocol" &> /dev/null; then
+        echo "Error: modelcontextprotocol package not found after installation"
+        echo "Attempting to install directly from git..."
+        pip install git+https://github.com/modelcontextprotocol/python-sdk.git
+    fi
 
     # Create systemd service file
     echo "Creating systemd service..."
@@ -126,14 +142,24 @@ server {
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
 
-    # Enable Nginx site
+    # Enable Nginx site and remove default site
+    echo "Configuring Nginx..."
     sudo ln -sf $NGINX_CONFIG /etc/nginx/sites-enabled/
-    sudo rm -f /etc/nginx/sites-enabled/default  # Remove default site
+    sudo rm -f /etc/nginx/sites-enabled/default
+
+    # Test Nginx configuration
+    echo "Testing Nginx configuration..."
     sudo nginx -t
+
+    # Reload Nginx
+    echo "Reloading Nginx..."
     sudo systemctl reload nginx
 
     # Reload systemd and start service
