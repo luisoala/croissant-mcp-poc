@@ -139,8 +139,8 @@ deploy_server() {
 
     # Verify installation
     echo "Verifying installation..."
-    if ! python3 -c "import modelcontextprotocol" &> /dev/null; then
-        echo "Error: modelcontextprotocol package not found after installation"
+    if ! python3 -c "import mcp" &> /dev/null; then
+        echo "Error: mcp package not found after installation"
         echo "Attempting to install directly from git..."
         pip install git+https://github.com/modelcontextprotocol/python-sdk.git
     fi
