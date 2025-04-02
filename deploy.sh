@@ -6,7 +6,6 @@ set -e
 # Configuration
 APP_NAME="croissant-mcp"
 APP_DIR="/opt/$APP_NAME"
-VENV_DIR="$APP_DIR/venv"
 SERVICE_NAME="$APP_NAME"
 NGINX_CONFIG="/etc/nginx/sites-available/$APP_NAME"
 
@@ -112,27 +111,6 @@ deploy_server() {
     echo "Copying application files..."
     cp -r ./* $APP_DIR/
 
-    # Create and activate virtual environment
-    echo "Setting up virtual environment..."
-    cd $APP_DIR
-    echo "Current directory: $(pwd)"
-    echo "Creating virtual environment..."
-    python3 -m venv venv
-    echo "Virtual environment created at: $APP_DIR/venv"
-    
-    # Verify virtual environment
-    if [ ! -f "$APP_DIR/venv/bin/python" ]; then
-        echo "Error: Virtual environment Python executable not found!"
-        echo "Checking venv directory contents:"
-        ls -la $APP_DIR/venv/bin/
-        exit 1
-    fi
-    
-    echo "Activating virtual environment..."
-    source venv/bin/activate
-    echo "Python path: $(which python)"
-    echo "Python version: $(python --version)"
-
     # Install git if not present
     if ! command -v git &> /dev/null; then
         echo "Installing git..."
@@ -147,18 +125,18 @@ deploy_server() {
         sudo apt-get install -y nginx
     fi
 
-    # Install dependencies
+    # Install dependencies globally
     echo "Installing dependencies..."
-    pip install --upgrade pip
-    pip install wheel setuptools
-    pip install -r requirements.txt
+    sudo pip3 install --upgrade pip
+    sudo pip3 install wheel setuptools
+    sudo pip3 install -r requirements.txt
 
     # Verify installation
     echo "Verifying installation..."
     if ! python3 -c "import mcp" &> /dev/null; then
         echo "Error: mcp package not found after installation"
         echo "Attempting to install directly from git..."
-        pip install git+https://github.com/modelcontextprotocol/python-sdk.git
+        sudo pip3 install git+https://github.com/modelcontextprotocol/python-sdk.git
     fi
 
     # Create systemd service file
@@ -172,12 +150,10 @@ After=network.target
 User=ubuntu
 Group=ubuntu
 WorkingDirectory=$APP_DIR
-Environment="PATH=$APP_DIR/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="PYTHONPATH=$APP_DIR"
 Environment="PYTHONUNBUFFERED=1"
-Environment="PYTHONPATH=$APP_DIR"
 Environment="LOG_LEVEL=debug"
-ExecStart=/bin/bash -c 'source $APP_DIR/venv/bin/activate && PYTHONPATH=$APP_DIR $APP_DIR/venv/bin/uvicorn src.server:app --host 0.0.0.0 --port 8000 --log-level debug'
+ExecStart=/usr/bin/python3 -m uvicorn src.server:app --host 0.0.0.0 --port 8000 --log-level debug
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:/var/log/croissant-mcp.log
@@ -195,7 +171,6 @@ EOF
     # Set proper permissions for the application directory
     sudo chown -R ubuntu:ubuntu $APP_DIR
     sudo chmod -R 755 $APP_DIR
-    sudo chmod -R 777 $APP_DIR/venv
 
     # Create Nginx configuration directory if it doesn't exist
     echo "Setting up Nginx configuration..."
