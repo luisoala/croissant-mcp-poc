@@ -1,65 +1,85 @@
-# Croissant-MCP Integration
+# Croissant MCP Server
 
-A proof-of-concept MCP server that indexes Croissant datasets across different data vendors (Kaggle, Hugging Face, OpenML, Dataverse).
-
-## Overview
-
-This project creates a Model Context Protocol (MCP) server that hosts an index of Croissant datasets from various data vendors. Users can easily search and add context of these datasets to their LLM-powered applications.
-
-## Project Structure
-
-```
-croissant-mcp-integration/
-├── main.py                 # Entry point to run the server
-├── src/
-│   ├── server.py           # MCP server implementation with endpoints and tools
-│   ├── dataset_index.py    # Dataset indexing functionality
-│   └── search.py           # Advanced search implementation
-```
+A minimal MCP server that indexes Croissant datasets and exposes them via tools and resources to LLM tools and agents. The server uses Server-Sent Events (SSE) for real-time updates and runs on port 8000.
 
 ## Features
 
-- Dataset indexing from multiple platforms (Hugging Face, Kaggle, OpenML, Dataverse)
-- Basic and advanced search functionality
-- Filtering by provider, format, license, and keywords
-- Pagination and sorting of search results
+- FastAPI-based MCP server
+- SSE support for real-time updates
+- API key authentication
+- Dataset indexing and search
+- Deployable to EC2
+- Nginx reverse proxy configuration
 
-## Installation
+## Setup
 
-1. Clone this repository
-2. Install the required dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+1. Create a virtual environment and install dependencies:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+```
 
-## Usage
+2. Set up environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your configuration
+```
 
-Run the server:
+## Running Locally
+
 ```bash
 python main.py
 ```
 
-The server will start on http://localhost:8000 by default.
+The server will start on http://0.0.0.0:8000
 
-## MCP Resources and Tools
+## Available Endpoints
 
-The server exposes the following MCP resources and tools:
+- Health check: `/health`
+- MCP endpoints: `/mcp`
+- SSE events: `/events`
+- API docs: `/docs`
 
-### Resources
-- `datasets://list` - List all available datasets
-- `datasets://{dataset_id}` - Get information about a specific dataset
+## Deployment to EC2
 
-### Tools
-- `search_datasets(query)` - Basic search for datasets
-- `advanced_search(query, provider, data_format, license_type, keywords, sort_by, page, page_size)` - Advanced search with filtering
-- `get_search_options()` - Get available options for search filters
-- `add_dataset(dataset_id, metadata)` - Add a new dataset to the index
+1. Update the `deploy_ec2.sh` script with your EC2 host:
+```bash
+EC2_HOST="your-ec2-host"
+```
 
-## Example Datasets
+2. Make sure you have SSH access to your EC2 instance:
+```bash
+ssh-copy-id ubuntu@your-ec2-host
+```
 
-The server comes pre-loaded with example datasets from:
-- Hugging Face: CroissantLLM bilingual dataset
-- Kaggle: MNIST handwritten digits
-- OpenML: Iris dataset
-- Dataverse: Titanic passengers dataset
-- MLCommons: PASS image dataset
+3. Run the deployment script:
+```bash
+./deploy_ec2.sh
+```
+
+The script will:
+- Copy the application files to EC2
+- Set up a Python virtual environment
+- Install dependencies
+- Configure systemd service
+- Set up Nginx reverse proxy
+
+## Security
+
+- The server requires an API key for authentication
+- Set the `MCP_API_KEY` environment variable or use the default demo key
+- All endpoints except `/health` require authentication
+- Nginx is configured to handle SSL (you'll need to add your SSL certificates)
+
+## Development
+
+The server is built with:
+- FastAPI for the web framework
+- MCP SDK for LLM tool integration
+- SSE-Starlette for real-time updates
+- Pydantic for data validation
+
+## License
+
+MIT
