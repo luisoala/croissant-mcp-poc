@@ -8,6 +8,8 @@ import uvicorn
 import logging
 import os
 import threading
+import json
+import glob
 from typing import Dict, List, Any
 from functools import wraps
 from starlette.middleware import Middleware
@@ -21,6 +23,21 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastMCP server
 mcp = FastMCP("Croissant MCP Server", port=8000)
+
+# Constants
+SAMPLES_DIR = "samples"
+CROISSANT_FILES = ["openml_test_croissant.json", "kaggle_test_croissant.json", 
+                   "hf_test_croissant.json", "dataverse_test_croissant.json"]
+
+def load_croissant_file(filename: str) -> Dict:
+    """Helper function to load a Croissant JSON file"""
+    file_path = os.path.join(SAMPLES_DIR, filename)
+    try:
+        with open(file_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading {filename}: {str(e)}")
+        return {}
 
 # Create Starlette app with CORS middleware
 app = Starlette(
@@ -53,99 +70,104 @@ def execute_on_main_thread(f):
 @execute_on_main_thread
 def list_datasets() -> Dict[str, List[str]]:
     """List all available datasets"""
-    return {"datasets": ["dataset1", "dataset2"]}
+    datasets = []
+    for filename in CROISSANT_FILES:
+        data = load_croissant_file(filename)
+        if data and 'name' in data:
+            datasets.append(data['name'])
+    return {"datasets": datasets}
 
 @mcp.tool()
 @execute_on_main_thread
 def search_datasets(query: str) -> Dict[str, List[str]]:
     """Search datasets by name, description, or tags"""
-    return {"results": [f"Dataset matching {query}"]}
+    results = []
+    query = query.lower()
+    
+    for filename in CROISSANT_FILES:
+        data = load_croissant_file(filename)
+        if not data:
+            continue
+            
+        # Search in name
+        if 'name' in data and query in data['name'].lower():
+            results.append(data['name'])
+            continue
+            
+        # Search in description
+        if 'description' in data and query in data['description'].lower():
+            results.append(data['name'])
+            continue
+            
+        # Search in keywords/tags if they exist
+        if 'keywords' in data:
+            if any(query in keyword.lower() for keyword in data['keywords']):
+                results.append(data['name'])
+                
+    return {"results": results}
 
 @mcp.tool()
 @execute_on_main_thread
 def get_dataset_metadata(dataset_id: str) -> Dict[str, Any]:
     """Get detailed metadata for a specific dataset"""
-    return {"metadata": {"id": dataset_id, "name": "Sample Dataset"}}
+    for filename in CROISSANT_FILES:
+        data = load_croissant_file(filename)
+        if data and data.get('name') == dataset_id:
+            return {
+                "metadata": {
+                    "id": dataset_id,
+                    "name": data.get('name'),
+                    "description": data.get('description'),
+                    "keywords": data.get('keywords', []),
+                    "creators": data.get('creators', []),
+                    "license": data.get('license', ''),
+                    "source": filename.split('_')[0]  # e.g., 'openml', 'kaggle', etc.
+                }
+            }
+    return {"metadata": {"id": dataset_id, "error": "Dataset not found"}}
 
 @mcp.tool()
 @execute_on_main_thread
 def get_dataset_preview(dataset_id: str, rows: int = 5) -> Dict[str, Any]:
     """Get a preview of the dataset"""
-    return {"preview": {"data": [{"column1": "value1"}]}}
+    for filename in CROISSANT_FILES:
+        data = load_croissant_file(filename)
+        if data and data.get('name') == dataset_id:
+            # Extract table schemas and data references
+            tables = data.get('tables', [])
+            preview_data = []
+            
+            for table in tables[:rows]:  # Limit to requested number of rows
+                preview_data.append({
+                    "name": table.get('name', ''),
+                    "schema": table.get('schema', {}),
+                    "data_url": table.get('data', {}).get('url', '')
+                })
+                
+            return {"preview": {"data": preview_data}}
+            
+    return {"preview": {"error": "Dataset not found"}}
 
 @mcp.tool()
 @execute_on_main_thread
 def get_dataset_stats(dataset_id: str) -> Dict[str, Any]:
     """Get basic statistics about the dataset"""
-    return {"stats": {"rows": 100, "columns": 5}}
-
-@mcp.tool()
-@execute_on_main_thread
-def get_current_file_path() -> str:
-    """Get the current path of the binary"""
-    return os.getcwd()
-
-@mcp.tool()
-@execute_on_main_thread
-def list_files_with_relative_path(relative_path: str = "") -> List[str]:
-    """List all files in the specified relative path in the current directory"""
-    base_dir = os.getcwd()
-    if ':' in relative_path or '..' in relative_path or '//' in relative_path:
-        return []
-    if relative_path is None or relative_path == "":
-        return os.listdir(base_dir)
-    else:
-        return os.listdir(os.path.join(base_dir, relative_path))
-
-@mcp.tool()
-@execute_on_main_thread
-def read_file(relative_path: str) -> str:
-    """Read the content of a file"""
-    base_dir = os.getcwd()
-    if ':' in relative_path or '..' in relative_path or '//' in relative_path:
-        return "Invalid relative path"
-    if relative_path == "":
-        return "Relative path is required"
-    with open(os.path.join(base_dir, relative_path), "r") as f:
-        return f.read()
-
-@mcp.tool()
-@execute_on_main_thread
-def write_file(relative_path: str, content: str) -> str:
-    """Write content to a file"""
-    base_dir = os.getcwd()
-    if ':' in relative_path or '..' in relative_path or '//' in relative_path:
-        return "Invalid relative path"
-    if relative_path == "":
-        return "Relative path is required"
-    with open(os.path.join(base_dir, relative_path), "w") as f:
-        f.write(content)
-    return "File written successfully"
-
-@mcp.tool()
-@execute_on_main_thread
-def read_binary(relative_path: str) -> bytes:
-    """Read the content of a binary file"""
-    base_dir = os.getcwd()
-    if ':' in relative_path or '..' in relative_path or '//' in relative_path:
-        return b"Invalid relative path"
-    if relative_path == "":
-        return b"Relative path is required"
-    with open(os.path.join(base_dir, relative_path), "rb") as f:
-        return f.read()
-
-@mcp.tool()
-@execute_on_main_thread
-def write_binary(relative_path: str, content: bytes) -> str:
-    """Write content to a binary file"""
-    base_dir = os.getcwd()
-    if ':' in relative_path or '..' in relative_path or '//' in relative_path:
-        return "Invalid relative path"
-    if relative_path == "":
-        return "Relative path is required"
-    with open(os.path.join(base_dir, relative_path), "wb") as f:
-        f.write(content)
-    return "File written successfully"
+    for filename in CROISSANT_FILES:
+        data = load_croissant_file(filename)
+        if data and data.get('name') == dataset_id:
+            tables = data.get('tables', [])
+            total_columns = sum(len(table.get('schema', {}).get('fields', [])) for table in tables)
+            
+            return {
+                "stats": {
+                    "num_tables": len(tables),
+                    "total_columns": total_columns,
+                    "file_format": [table.get('data', {}).get('format', '') for table in tables],
+                    "has_schema": all('schema' in table for table in tables)
+                }
+            }
+            
+    return {"stats": {"error": "Dataset not found"}}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
