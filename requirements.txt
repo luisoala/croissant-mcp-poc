@@ -6,7 +6,7 @@ python-multipart>=0.0.6
 sse-starlette>=1.7.0
 
 # MCP SDK
-mcp-sdk>=0.1.0  # Includes MCP Inspector functionality
+git+https://github.com/modelcontextprotocol/python-sdk.git
 
 # Utilities
 httpx>=0.25.1

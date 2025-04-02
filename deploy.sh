@@ -7,8 +7,8 @@ set -e
 APP_NAME="croissant-mcp"
 APP_DIR="/opt/$APP_NAME"
 VENV_DIR="$APP_DIR/venv"
-SERVICE_NAME="$APP_NAME.service"
-NGINX_CONF="$APP_NAME.conf"
+SERVICE_NAME="$APP_NAME"
+NGINX_CONFIG="/etc/nginx/sites-available/$APP_NAME"
 
 # Create application directory
 sudo mkdir -p $APP_DIR
@@ -21,11 +21,18 @@ cp -r ./* $APP_DIR/
 python3 -m venv $VENV_DIR
 source $VENV_DIR/bin/activate
 
+# Install git if not present
+if ! command -v git &> /dev/null; then
+    sudo apt-get update
+    sudo apt-get install -y git
+fi
+
 # Install dependencies
-pip install -r $APP_DIR/requirements.txt
+pip install --upgrade pip
+pip install -r requirements.txt
 
 # Create systemd service file
-cat << EOF | sudo tee /etc/systemd/system/$SERVICE_NAME
+sudo tee /etc/systemd/system/$SERVICE_NAME.service << EOF
 [Unit]
 Description=Croissant MCP Server
 After=network.target
@@ -35,7 +42,7 @@ User=$USER
 Group=$USER
 WorkingDirectory=$APP_DIR
 Environment="PATH=$VENV_DIR/bin"
-ExecStart=$VENV_DIR/bin/uvicorn main:app --host 0.0.0.0 --port 8000
+ExecStart=$VENV_DIR/bin/uvicorn src.server:app --host 0.0.0.0 --port 8000
 Restart=always
 
 [Install]
@@ -43,7 +50,7 @@ WantedBy=multi-user.target
 EOF
 
 # Create Nginx configuration
-cat << EOF | sudo tee /etc/nginx/sites-available/$NGINX_CONF
+sudo tee $NGINX_CONFIG << EOF
 server {
     listen 80;
     server_name _;
@@ -55,28 +62,21 @@ server {
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host \$host;
         proxy_cache_bypass \$http_upgrade;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
 
 # Enable Nginx site
-sudo ln -sf /etc/nginx/sites-available/$NGINX_CONF /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
-
-# Test Nginx configuration
+sudo ln -sf $NGINX_CONFIG /etc/nginx/sites-enabled/
 sudo nginx -t
+sudo systemctl reload nginx
 
-# Reload systemd and start service
+# Enable and start the service
 sudo systemctl daemon-reload
 sudo systemctl enable $SERVICE_NAME
 sudo systemctl restart $SERVICE_NAME
-sudo systemctl restart nginx
 
 # Check service status
 sudo systemctl status $SERVICE_NAME
 
-echo "Deployment complete! The server should be running on port 8000."
-echo "You can check the logs with: sudo journalctl -u $SERVICE_NAME -f" 
+echo "Deployment complete! The server should be running on http://localhost:8000" 
