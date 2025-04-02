@@ -7,8 +7,13 @@ from mcp.server import FastMCP
 import uvicorn
 import logging
 import os
+import threading
 from typing import Dict, List, Any
 from functools import wraps
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
+from starlette.applications import Starlette
+from starlette.routing import Mount
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -16,6 +21,22 @@ logger = logging.getLogger(__name__)
 
 # Initialize FastMCP server
 mcp = FastMCP("Croissant MCP Server", port=8000)
+
+# Create Starlette app with CORS middleware
+app = Starlette(
+    debug=True,
+    middleware=[
+        Middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    ],
+    routes=[
+        Mount("/", app=mcp.sse_app()),
+    ],
+)
 
 # Decorator to ensure operations are executed in the main thread
 def execute_on_main_thread(f):
@@ -83,7 +104,7 @@ def read_file(relative_path: str) -> str:
     base_dir = os.getcwd()
     if ':' in relative_path or '..' in relative_path or '//' in relative_path:
         return "Invalid relative path"
-    if relative_path is "":
+    if relative_path == "":
         return "Relative path is required"
     with open(os.path.join(base_dir, relative_path), "r") as f:
         return f.read()
@@ -95,7 +116,7 @@ def write_file(relative_path: str, content: str) -> str:
     base_dir = os.getcwd()
     if ':' in relative_path or '..' in relative_path or '//' in relative_path:
         return "Invalid relative path"
-    if relative_path is "":
+    if relative_path == "":
         return "Relative path is required"
     with open(os.path.join(base_dir, relative_path), "w") as f:
         f.write(content)
@@ -108,7 +129,7 @@ def read_binary(relative_path: str) -> bytes:
     base_dir = os.getcwd()
     if ':' in relative_path or '..' in relative_path or '//' in relative_path:
         return b"Invalid relative path"
-    if relative_path is "":
+    if relative_path == "":
         return b"Relative path is required"
     with open(os.path.join(base_dir, relative_path), "rb") as f:
         return f.read()
@@ -120,15 +141,11 @@ def write_binary(relative_path: str, content: bytes) -> str:
     base_dir = os.getcwd()
     if ':' in relative_path or '..' in relative_path or '//' in relative_path:
         return "Invalid relative path"
-    if relative_path is "":
+    if relative_path == "":
         return "Relative path is required"
     with open(os.path.join(base_dir, relative_path), "wb") as f:
         f.write(content)
     return "File written successfully"
 
 if __name__ == "__main__":
-    try:
-        logger.info("Starting Croissant MCP Server...")
-        mcp.run(transport="sse")
-    except Exception as e:
-        logger.error(f"Server error: {str(e)}")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
