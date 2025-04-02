@@ -9,9 +9,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sse_starlette.sse import EventSourceResponse
 from mcp.server.fastmcp import FastMCP
-from modelcontextprotocol.server.fastapi import FastMCP as ModelContextProtocolFastMCP
-from modelcontextprotocol.server.sse import SSEServerTransport
-from modelcontextprotocol.server.types import Tool
+from mcp.server.sse import SSEServerTransport
+from mcp.server.types import Tool
 from typing import Dict, List, Optional, Any, TypeVar, Generic
 import os
 from dotenv import load_dotenv
