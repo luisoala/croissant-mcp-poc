@@ -114,8 +114,9 @@ deploy_server() {
 
     # Create and activate virtual environment
     echo "Setting up virtual environment..."
-    python3 -m venv $VENV_DIR
-    source $VENV_DIR/bin/activate
+    cd $APP_DIR
+    python3 -m venv venv
+    source venv/bin/activate
 
     # Install git if not present
     if ! command -v git &> /dev/null; then
@@ -156,10 +157,10 @@ After=network.target
 User=$USER
 Group=$USER
 WorkingDirectory=$APP_DIR
-Environment="PATH=$VENV_DIR/bin"
+Environment="PATH=$APP_DIR/venv/bin"
 Environment="PYTHONPATH=$APP_DIR"
 Environment="PYTHONUNBUFFERED=1"
-ExecStart=/bin/bash -c 'source $VENV_DIR/bin/activate && $VENV_DIR/bin/uvicorn src.server:app --host 0.0.0.0 --port 8000 --log-level debug'
+ExecStart=$APP_DIR/venv/bin/uvicorn src.server:app --host 0.0.0.0 --port 8000 --log-level debug
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:/var/log/croissant-mcp.log
