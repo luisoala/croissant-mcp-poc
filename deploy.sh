@@ -8,6 +8,7 @@ APP_NAME="croissant-mcp"
 APP_DIR="/opt/$APP_NAME"
 SERVICE_NAME="$APP_NAME"
 NGINX_CONFIG="/etc/nginx/sites-available/$APP_NAME"
+VENV_DIR="$APP_DIR/venv"
 
 # Function to check if server is running
 check_server_running() {
@@ -125,18 +126,46 @@ deploy_server() {
         sudo apt-get install -y nginx
     fi
 
-    # Install dependencies globally
+    # Install python3-venv if not present
+    if ! command -v python3 -m venv &> /dev/null; then
+        echo "Installing python3-venv..."
+        sudo apt-get update
+        sudo apt-get install -y python3-venv
+    fi
+
+    # Create and activate virtual environment
+    echo "Setting up virtual environment..."
+    cd $APP_DIR
+    rm -rf venv  # Remove any existing broken venv
+    python3 -m venv venv
+    if [ ! -d "venv/bin" ]; then
+        echo "Error: Virtual environment creation failed"
+        exit 1
+    fi
+    source venv/bin/activate
+    if [ -z "$VIRTUAL_ENV" ]; then
+        echo "Error: Failed to activate virtual environment"
+        exit 1
+    fi
+
+    # Install dependencies in virtual environment
     echo "Installing dependencies..."
-    sudo pip3 install --upgrade pip
-    sudo pip3 install wheel setuptools
-    sudo pip3 install -r requirements.txt
+    pip install --upgrade pip
+    pip install wheel setuptools
+    pip install -r requirements.txt
 
     # Verify installation
     echo "Verifying installation..."
-    if ! python3 -c "import mcp" &> /dev/null; then
+    if ! python -c "import mcp" &> /dev/null; then
         echo "Error: mcp package not found after installation"
         echo "Attempting to install directly from git..."
-        sudo pip3 install git+https://github.com/modelcontextprotocol/python-sdk.git
+        pip install git+https://github.com/modelcontextprotocol/python-sdk.git
+    fi
+
+    # Verify virtual environment is properly set up
+    if [ ! -f "venv/bin/python" ]; then
+        echo "Error: Python interpreter not found in virtual environment"
+        exit 1
     fi
 
     # Create systemd service file
@@ -153,7 +182,7 @@ WorkingDirectory=$APP_DIR
 Environment="PYTHONPATH=$APP_DIR"
 Environment="PYTHONUNBUFFERED=1"
 Environment="LOG_LEVEL=debug"
-ExecStart=/usr/bin/python3 -m uvicorn src.server:app --host 0.0.0.0 --port 8000 --log-level debug
+ExecStart=$VENV_DIR/bin/python -m uvicorn src.server:app --host 0.0.0.0 --port 8000 --log-level debug
 Restart=on-failure
 RestartSec=5
 StandardOutput=append:/var/log/croissant-mcp.log
@@ -198,7 +227,7 @@ server {
     ssl_ciphers HIGH:!aNULL:!MD5;
 
     location / {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://localhost:8000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -207,27 +236,12 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        
-        # Timeout settings for SSE
-        proxy_read_timeout 300;
-        proxy_send_timeout 300;
-        proxy_connect_timeout 300;
     }
 }
 EOF
 
-    # Create SSL directory and generate self-signed certificate
-    echo "Setting up SSL..."
-    sudo mkdir -p /etc/nginx/ssl
-    sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-        -keyout /etc/nginx/ssl/croissant-mcp.key \
-        -out /etc/nginx/ssl/croissant-mcp.crt \
-        -subj "/C=US/ST=State/L=City/O=Organization/CN=localhost"
-    sudo chmod 600 /etc/nginx/ssl/croissant-mcp.key
-    sudo chmod 644 /etc/nginx/ssl/croissant-mcp.crt
-
-    # Enable Nginx site and remove default site
-    echo "Configuring Nginx..."
+    # Enable Nginx configuration
+    echo "Enabling Nginx configuration..."
     sudo ln -sf $NGINX_CONFIG /etc/nginx/sites-enabled/
     sudo rm -f /etc/nginx/sites-enabled/default
 
@@ -239,29 +253,19 @@ EOF
     echo "Reloading Nginx..."
     sudo systemctl reload nginx
 
-    # Reload systemd and start service
-    echo "Starting service..."
+    # Reload systemd daemon
+    echo "Reloading systemd daemon..."
     sudo systemctl daemon-reload
+
+    # Enable and start the service
+    echo "Enabling and starting service..."
     sudo systemctl enable $SERVICE_NAME
-    sudo systemctl restart $SERVICE_NAME
+    sudo systemctl start $SERVICE_NAME
 
-    # Check service status and logs
-    echo "Checking service status..."
-    sudo systemctl status $SERVICE_NAME
-    
-    echo "Checking service logs with full output..."
-    sudo journalctl -u $SERVICE_NAME -n 50 --no-pager
-    echo "Checking error logs..."
-    sudo journalctl -u $SERVICE_NAME -n 50 --no-pager -p err
-    echo "Checking service output..."
-    sudo journalctl -u $SERVICE_NAME -n 50 --no-pager -o cat
-    echo "Checking application error log..."
-    sudo cat /var/log/croissant-mcp.error.log
-
-    echo "Deployment complete! The server should be running on http://localhost:8000"
+    echo "Deployment complete!"
 }
 
-# Handle command line arguments
+# Main script
 case "$1" in
     start)
         start_server
