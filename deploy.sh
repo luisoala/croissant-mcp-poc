@@ -59,28 +59,35 @@ show_usage() {
 
 # Main deployment function
 deploy_server() {
+    echo "Starting deployment..."
+
     # Create application directory
     sudo mkdir -p $APP_DIR
     sudo chown -R $USER:$USER $APP_DIR
 
     # Copy application files
+    echo "Copying application files..."
     cp -r ./* $APP_DIR/
 
     # Create and activate virtual environment
+    echo "Setting up virtual environment..."
     python3 -m venv $VENV_DIR
     source $VENV_DIR/bin/activate
 
     # Install git if not present
     if ! command -v git &> /dev/null; then
+        echo "Installing git..."
         sudo apt-get update
         sudo apt-get install -y git
     fi
 
     # Install dependencies
+    echo "Installing dependencies..."
     pip install --upgrade pip
     pip install -r requirements.txt
 
     # Create systemd service file
+    echo "Creating systemd service..."
     sudo tee /etc/systemd/system/$SERVICE_NAME.service << EOF
 [Unit]
 Description=Croissant MCP Server
@@ -97,6 +104,11 @@ Restart=always
 [Install]
 WantedBy=multi-user.target
 EOF
+
+    # Create Nginx configuration directory if it doesn't exist
+    echo "Setting up Nginx configuration..."
+    sudo mkdir -p /etc/nginx/sites-available
+    sudo mkdir -p /etc/nginx/sites-enabled
 
     # Create Nginx configuration
     sudo tee $NGINX_CONFIG << EOF
@@ -117,15 +129,18 @@ EOF
 
     # Enable Nginx site
     sudo ln -sf $NGINX_CONFIG /etc/nginx/sites-enabled/
+    sudo rm -f /etc/nginx/sites-enabled/default  # Remove default site
     sudo nginx -t
     sudo systemctl reload nginx
 
-    # Enable and start the service
+    # Reload systemd and start service
+    echo "Starting service..."
     sudo systemctl daemon-reload
     sudo systemctl enable $SERVICE_NAME
     sudo systemctl restart $SERVICE_NAME
 
     # Check service status
+    echo "Checking service status..."
     sudo systemctl status $SERVICE_NAME
 
     echo "Deployment complete! The server should be running on http://localhost:8000"
