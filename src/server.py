@@ -1,182 +1,134 @@
 """
 Main server implementation for the Croissant MCP server
 """
-import asyncio
-import logging
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Depends, Request, Security
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from sse_starlette.sse import EventSourceResponse
-from mcp.server.fastmcp import FastMCP
+from mcp.server import Server
 from mcp.server.sse import SseServerTransport
-from mcp.tool import Tool
-from typing import Dict, List, Optional, Any, TypeVar, Generic
+from mcp.server import FastMCP
+import uvicorn
+import logging
 import os
-from dotenv import load_dotenv
-import signal
-import sys
-
-from .config.settings import settings
-from .tools import dataset_tools
-
-# Load environment variables
-load_dotenv()
+from typing import Dict, List, Any
+from functools import wraps
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Optional API Key security
-API_KEY = os.getenv("API_KEY")
-if API_KEY:
-    from fastapi.security import APIKeyHeader
-    api_key_header = APIKeyHeader(name="X-API-Key")
+# Initialize FastMCP server
+mcp = FastMCP("Croissant MCP Server", port=8000)
 
-    async def get_api_key(api_key: str = Security(api_key_header)):
-        if api_key != API_KEY:
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid API key"
-            )
-        return api_key
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Handle startup and shutdown events"""
-    # Startup
-    logger.info("Starting up Croissant MCP Server...")
-    # Load datasets
-    dataset_tools.load_sample_datasets()
-    # Initialize MCP server
-    mcp = FastMCP("Croissant MCP Server")
-    yield
-    # Shutdown
-    logger.info("Shutting down Croissant MCP Server...")
-    # Cleanup resources
-    dataset_tools.datasets.clear()
-
-# Initialize FastAPI app with lifespan
-app = FastAPI(
-    title="Croissant MCP Server",
-    description="MCP server for Croissant datasets",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, replace with specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy"}
-
-# SSE endpoint for real-time updates
-@app.get("/events")
-async def events(request: Request):
-    """SSE endpoint for real-time updates with ping/pong"""
-    async def event_generator():
+# Decorator to ensure operations are executed in the main thread
+def execute_on_main_thread(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
         try:
-            while True:
-                if await request.is_disconnected():
-                    logger.info("Client disconnected")
-                    break
-                
-                # Send ping every 30 seconds
-                yield {
-                    "event": "ping",
-                    "data": "ping"
-                }
-                
-                # Send dataset count
-                yield {
-                    "event": "dataset_count",
-                    "data": str(len(dataset_tools.datasets))
-                }
-                
-                # Wait before next update
-                await asyncio.sleep(30)
-                
+            return f(*args, **kwargs)
         except Exception as e:
-            logger.error(f"Error in SSE connection: {e}")
-            yield {
-                "event": "error",
-                "data": str(e)
-            }
-    
-    return EventSourceResponse(
-        event_generator(),
-        ping=30000,  # Send ping every 30 seconds
-        ping_message_factory=lambda: "ping"
-    )
+            logger.error(f"Error in {f.__name__}: {str(e)}")
+            return {"error": str(e)}
+    return wrapper
 
-# Mount MCP routes
-app.include_router(mcp.app, prefix="/mcp")
+@mcp.tool()
+@execute_on_main_thread
+def list_datasets() -> Dict[str, List[str]]:
+    """List all available datasets"""
+    return {"datasets": ["dataset1", "dataset2"]}
 
-# Global state for graceful shutdown
-shutdown_event = asyncio.Event()
+@mcp.tool()
+@execute_on_main_thread
+def search_datasets(query: str) -> Dict[str, List[str]]:
+    """Search datasets by name, description, or tags"""
+    return {"results": [f"Dataset matching {query}"]}
 
-@app.get("/shutdown")
-async def shutdown_server():
-    """Endpoint to gracefully shutdown the server"""
-    shutdown_event.set()
-    return {"message": "Server shutting down..."}
+@mcp.tool()
+@execute_on_main_thread
+def get_dataset_metadata(dataset_id: str) -> Dict[str, Any]:
+    """Get detailed metadata for a specific dataset"""
+    return {"metadata": {"id": dataset_id, "name": "Sample Dataset"}}
 
-@app.on_event("startup")
-async def startup_event():
-    """Initialize resources on startup"""
-    print("Starting up server...")
-    # Add any startup initialization here
+@mcp.tool()
+@execute_on_main_thread
+def get_dataset_preview(dataset_id: str, rows: int = 5) -> Dict[str, Any]:
+    """Get a preview of the dataset"""
+    return {"preview": {"data": [{"column1": "value1"}]}}
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup resources on shutdown"""
-    print("Shutting down server...")
-    # Add any cleanup code here
+@mcp.tool()
+@execute_on_main_thread
+def get_dataset_stats(dataset_id: str) -> Dict[str, Any]:
+    """Get basic statistics about the dataset"""
+    return {"stats": {"rows": 100, "columns": 5}}
 
-# Error handling
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler"""
-    logger.error(f"Global error: {exc}")
-    return JSONResponse(
-        status_code=500,
-        content={"detail": "Internal server error"}
-    )
+@mcp.tool()
+@execute_on_main_thread
+def get_current_file_path() -> str:
+    """Get the current path of the binary"""
+    return os.getcwd()
+
+@mcp.tool()
+@execute_on_main_thread
+def list_files_with_relative_path(relative_path: str = "") -> List[str]:
+    """List all files in the specified relative path in the current directory"""
+    base_dir = os.getcwd()
+    if ':' in relative_path or '..' in relative_path or '//' in relative_path:
+        return []
+    if relative_path is None or relative_path == "":
+        return os.listdir(base_dir)
+    else:
+        return os.listdir(os.path.join(base_dir, relative_path))
+
+@mcp.tool()
+@execute_on_main_thread
+def read_file(relative_path: str) -> str:
+    """Read the content of a file"""
+    base_dir = os.getcwd()
+    if ':' in relative_path or '..' in relative_path or '//' in relative_path:
+        return "Invalid relative path"
+    if relative_path is "":
+        return "Relative path is required"
+    with open(os.path.join(base_dir, relative_path), "r") as f:
+        return f.read()
+
+@mcp.tool()
+@execute_on_main_thread
+def write_file(relative_path: str, content: str) -> str:
+    """Write content to a file"""
+    base_dir = os.getcwd()
+    if ':' in relative_path or '..' in relative_path or '//' in relative_path:
+        return "Invalid relative path"
+    if relative_path is "":
+        return "Relative path is required"
+    with open(os.path.join(base_dir, relative_path), "w") as f:
+        f.write(content)
+    return "File written successfully"
+
+@mcp.tool()
+@execute_on_main_thread
+def read_binary(relative_path: str) -> bytes:
+    """Read the content of a binary file"""
+    base_dir = os.getcwd()
+    if ':' in relative_path or '..' in relative_path or '//' in relative_path:
+        return b"Invalid relative path"
+    if relative_path is "":
+        return b"Relative path is required"
+    with open(os.path.join(base_dir, relative_path), "rb") as f:
+        return f.read()
+
+@mcp.tool()
+@execute_on_main_thread
+def write_binary(relative_path: str, content: bytes) -> str:
+    """Write content to a binary file"""
+    base_dir = os.getcwd()
+    if ':' in relative_path or '..' in relative_path or '//' in relative_path:
+        return "Invalid relative path"
+    if relative_path is "":
+        return "Relative path is required"
+    with open(os.path.join(base_dir, relative_path), "wb") as f:
+        f.write(content)
+    return "File written successfully"
 
 if __name__ == "__main__":
-    import uvicorn
-    
-    config = uvicorn.Config(
-        "src.server:app",
-        host="0.0.0.0",
-        port=8000,
-        log_level="info",
-        timeout_graceful_shutdown=5
-    )
-    
-    server = uvicorn.Server(config)
-    
-    # Handle shutdown signal
-    def handle_shutdown(sig, frame):
-        print("Received shutdown signal")
-        shutdown_event.set()
-    
-    signal.signal(signal.SIGTERM, handle_shutdown)
-    signal.signal(signal.SIGINT, handle_shutdown)
-    
     try:
-        server.run()
-    except KeyboardInterrupt:
-        print("Received keyboard interrupt")
-        shutdown_event.set()
-    finally:
-        print("Server shutdown complete")
+        logger.info("Starting Croissant MCP Server...")
+        mcp.run(transport="sse")
+    except Exception as e:
+        logger.error(f"Server error: {str(e)}")
